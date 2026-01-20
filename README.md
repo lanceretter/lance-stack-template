@@ -5,6 +5,7 @@ My preferred tech stack for building full-stack TypeScript applications.
 ## What's Here
 
 - **[STACK.md](./STACK.md)** - Complete reference guide with all dependencies, configs, and patterns
+- **[.cursor/](./.cursor/)** - Optional Cursor agent rules, commands, and hooks (see [Agent Workflow](#cursor-agent-workflow-optional) below)
 
 ## Quick Summary
 
@@ -35,3 +36,15 @@ git add .
 git commit -m "Initial commit"
 gh repo create lance-stack-template --public --source=. --push
 ```
+
+## Cursor Agent Workflow (optional)
+
+This template includes optional Cursor agent configuration in `.cursor/`:
+
+- **Rules** (`.cursor/rules/`) — Stack-specific commands and coding patterns the agent follows
+- **Commands** (`.cursor/commands/`) — Reusable workflows like `/pr`, `/review`, `/fix-issue`
+- **Hooks** (`.cursor/hooks/`) — Optional automation for long-running agent loops
+
+See the **Cursor Agent Best Practices** section in [STACK.md](./STACK.md) for detailed guidance on working with agents in this stack.
+
+**Requirements:** Some commands use `gh` (GitHub CLI). Install with `brew install gh` and authenticate with `gh auth login`.

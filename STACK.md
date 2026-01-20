@@ -52,6 +52,89 @@ id = "your-hyperdrive-config-id"
 
 Business logic lives in `packages/core/` — pure TypeScript, no runtime dependencies:
 
+---
+
+## 🤖 Cursor Agent Best Practices (Team Workflow)
+
+Optional guidance for working with Cursor's AI agent in this stack. These patterns are adapted from [Cursor's agent best practices](https://cursor.com/blog/agent-best-practices) and tailored for this monorepo setup.
+
+### Plan-First Workflow
+
+Use **Plan Mode** (`Shift+Tab`) for:
+- New features spanning multiple files/packages
+- Architectural changes (adding new bindings, changing auth, DB migrations)
+- Unfamiliar areas of the codebase
+
+Skip planning for:
+- Quick bug fixes in a single file
+- Adding a new Hono route following existing patterns
+- Simple UI tweaks in `apps/web`
+
+**Tip:** Save plans to `.cursor/plans/` for documentation and to resume interrupted work.
+
+### Context Strategy for This Stack
+
+When prompting, tag relevant paths to help the agent find context faster:
+
+| Task | Tag These |
+|------|-----------|
+| API changes | `apps/api/`, `wrangler.toml` |
+| Frontend changes | `apps/frontend/`, `vite.config.ts` |
+| Shared logic | `packages/core/` |
+| Full-stack feature | `apps/api/`, `apps/web/`, `packages/core/` |
+| Auth changes | `apps/api/src/` (middleware), `apps/web/src/` (ClerkProvider) |
+| Database schema | `sql/migrations/`, `wrangler.toml` |
+
+The agent can also search the codebase automatically — don't over-tag if you're unsure.
+
+### Test-Driven Development Loop
+
+This stack uses **Vitest** for testing in `packages/core/`. For business logic changes:
+
+1. Ask the agent to write tests first based on expected behavior
+2. Confirm tests fail (agent should not write implementation yet)
+3. Commit the tests
+4. Ask the agent to implement code that passes tests (without modifying tests)
+5. Commit the implementation
+
+Tests give the agent a clear success signal to iterate against.
+
+### Git Workflow Safety
+
+**Never commit secrets.** This stack uses:
+- `.env.local` / `.env.production` for frontend env vars (gitignored)
+- `wrangler secret put` for Worker secrets (never in code)
+- Clerk keys should be in env files or Cloudflare secrets, not committed
+
+**Commit hygiene:**
+- Commit logical units of work separately
+- Use descriptive commit messages (the agent can help draft these)
+- Review diffs before accepting — AI-generated code can look correct but have subtle bugs
+
+### When to Start a New Chat
+
+**Start fresh when:**
+- Moving to a different feature or package
+- The agent seems confused or keeps repeating mistakes
+- You've finished one logical unit of work
+
+**Continue the conversation when:**
+- Iterating on the same feature
+- Debugging something the agent just built
+- The agent needs earlier context
+
+Long conversations accumulate noise. If agent effectiveness drops, start a new chat and use `@Past Chats` to reference previous work.
+
+### Useful Agent Commands
+
+If you've set up `.cursor/commands/` (see below), you can use:
+- `/pr` — Commit, push, and open a pull request
+- `/review` — Run checks and summarize potential issues
+- `/fix-issue [number]` — Fetch a GitHub issue and implement a fix
+- `/update-deps` — Update dependencies incrementally with tests
+
+---
+
 ```typescript
 // packages/core/src/index.ts
 export * from "./types";
