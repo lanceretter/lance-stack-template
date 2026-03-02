@@ -1196,6 +1196,386 @@ cd ../..
 
 ---
 
+## 🤖 AI Chat Integration (LLM + SQL Tools)
+
+Add an embedded AI assistant that can answer any data question by writing its own SQL. Uses OpenRouter for model-agnostic access to Claude, GPT, Gemini, DeepSeek, etc.
+
+> **Reference implementation:** See [conquest-hub/docs/AI_CHAT_INTEGRATION.md](https://github.com/lanceretter/conquest-hub) for the full walkthrough with every code snippet and debugging notes.
+
+### Architecture
+
+```
+Frontend (ChatPanel)  ←── SSE stream ──→  Worker (Hono)  ──→  OpenRouter (LLM)
+                                              │
+                                              ├── run_readonly_query → Database
+                                              └── describe_schema    → Database
+```
+
+1. User asks a question in the chat panel
+2. Backend sends message history + system prompt (with full DB schema) to LLM via OpenRouter
+3. LLM generates a SQL query and calls the `run_readonly_query` tool
+4. Backend executes the SQL, returns results to LLM
+5. LLM interprets data and streams a human-readable response back
+
+### Key Insight: Raw SQL > Hardcoded Tools
+
+**Don't build 10+ query tools with fixed parameters.** Build ONE general-purpose `run_readonly_query` tool. The LLM already knows SQL — give it your schema and let it write the queries.
+
+With hardcoded tools, users hit walls ("I can't filter by date"). With raw SQL, the bot can answer almost anything:
+
+```sql
+-- "show me cameras added in the last 30 days"
+SELECT name, created_at FROM assets
+WHERE LOWER(type) LIKE '%camera%'
+  AND created_at > NOW() - INTERVAL '30 days'
+```
+
+### Dependencies
+
+```bash
+# API (apps/api)
+npm install postgres  # for raw SQL execution
+
+# Frontend (apps/web)
+# No extra deps — uses fetch + ReadableStream for SSE
+```
+
+### Backend: Chat Route
+
+Create `apps/api/src/routes/chat.ts`:
+
+```typescript
+import { Hono } from "hono";
+import { verifyToken } from "@clerk/backend";
+
+const router = new Hono<{ Bindings: Env }>();
+
+router.post("/", async (c) => {
+  // 1. Auth (Clerk token)
+  const token = c.req.header("Authorization")?.slice(7);
+  if (!token) return c.json({ error: "Unauthorized" }, 401);
+  await verifyToken(token, { secretKey: c.env.CLERK_SECRET_KEY });
+
+  // 2. Parse request
+  const { messages, model, page } = await c.req.json();
+  const selectedModel = ALLOWED_MODELS.includes(model) ? model : DEFAULT_MODEL;
+
+  // 3. Build system prompt with schema reference
+  const systemPrompt = buildSystemPrompt(page);
+
+  // 4. Stream response with tool loop
+  return new Response(
+    new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        const send = (event: string, data: unknown) =>
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+
+        let toolMessages = [...messages];
+        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${c.env.OPENROUTER_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: selectedModel,
+              messages: [{ role: "system", content: systemPrompt }, ...toolMessages],
+              tools: TOOL_DEFINITIONS,
+              stream: true,
+            }),
+          });
+
+          // Parse SSE from OpenRouter, forward text deltas to client
+          // If tool_calls received: execute tool, add result to toolMessages, continue loop
+          // If no tool_calls: stream is done, break
+          // ... (SSE parsing logic)
+        }
+        send("done", {});
+        controller.close();
+      },
+    }),
+    { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } }
+  );
+});
+```
+
+### Backend: Tool Definitions & Execution
+
+Create `apps/api/src/lib/chat-tools.ts`:
+
+```typescript
+import postgres from "postgres";
+
+// Safety: block write operations
+const BLOCKED_KEYWORDS = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE)\b/i;
+const MAX_ROWS = 200;
+
+export const TOOL_DEFINITIONS = [
+  {
+    type: "function",
+    function: {
+      name: "run_readonly_query",
+      description: "Execute a read-only SQL query. Only SELECT is allowed. 200-row limit.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "A SELECT SQL query" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "describe_schema",
+      description: "Get column names and types for database tables.",
+      parameters: {
+        type: "object",
+        properties: {
+          tables: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+  },
+];
+
+export async function executeTool(env: Env, name: string, args: Record<string, unknown>) {
+  switch (name) {
+    case "run_readonly_query": return runReadonlyQuery(env, args);
+    case "describe_schema":   return describeSchema(env, args);
+    default: return JSON.stringify({ error: `Unknown tool: ${name}` });
+  }
+}
+
+async function runReadonlyQuery(env: Env, args: Record<string, unknown>) {
+  const query = (args.query as string || "").trim();
+  if (!query) return JSON.stringify({ error: "No query provided." });
+  if (BLOCKED_KEYWORDS.test(query)) return JSON.stringify({ error: "Only SELECT queries allowed." });
+
+  // Add row limit if not present
+  const finalQuery = /\blimit\b/i.test(query) ? query : `${query.replace(/;\s*$/, "")} LIMIT ${MAX_ROWS}`;
+
+  const client = postgres(env.DATABASE_URL || env.HYPERDRIVE.connectionString, {
+    ssl: env.HYPERDRIVE ? false : "require",
+  });
+
+  try {
+    const rows = await client.unsafe(finalQuery);
+    return JSON.stringify({ rows: [...rows], rowCount: rows.length });
+  } catch (err) {
+    return JSON.stringify({ error: `Query failed: ${err instanceof Error ? err.message : err}` });
+  } finally {
+    await client.end();
+  }
+}
+```
+
+### System Prompt: Include Your Schema
+
+The most important piece. The LLM needs to know your tables:
+
+```typescript
+const SCHEMA_REFERENCE = `
+## Database Schema
+| Table | Key Columns | Rows |
+|-------|-------------|------|
+| users | id, email, name, created_at | ~500 |
+| orders | id, user_id, total, status, created_at | ~10,000 |
+| products | id, name, price, category | ~200 |
+...
+`;
+
+function buildSystemPrompt(page?: string) {
+  return [
+    "You are an AI assistant embedded in this app.",
+    "Use run_readonly_query to answer ANY data question — write SQL directly.",
+    "Use describe_schema if unsure what columns exist.",
+    "Always try a query before saying something isn't possible.",
+    "",
+    SCHEMA_REFERENCE,
+    page ? `\nThe user is on the **${page}** page.` : "",
+  ].join("\n");
+}
+```
+
+### Frontend: Chat Hook
+
+Create `apps/web/src/hooks/useChatPanel.ts`:
+
+```typescript
+import { useState, useRef, useCallback } from "react";
+import { useAuth } from "@clerk/clerk-react";
+import { useLocation } from "react-router-dom";
+
+const DEFAULT_MODEL = "openai/gpt-4.1-mini";
+const MODEL_STORAGE_KEY = "chat-model";
+
+export function useChatPanel() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [model, setModel] = useState(() =>
+    localStorage.getItem(MODEL_STORAGE_KEY) || DEFAULT_MODEL
+  );
+  const abortRef = useRef<AbortController | null>(null);
+  const { getToken } = useAuth();
+  const location = useLocation();
+
+  const sendMessage = useCallback(async (content: string) => {
+    const userMsg = { role: "user" as const, content };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setIsStreaming(true);
+
+    const token = await getToken();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/chat`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages: newMessages,
+        model,
+        page: location.pathname,
+      }),
+      signal: controller.signal,
+    });
+
+    // Parse SSE stream
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let assistantContent = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("event: ")) {
+          // currentEvent = line.slice(7);
+        } else if (line.startsWith("data: ")) {
+          const data = JSON.parse(line.slice(6));
+          if (data.content) {
+            assistantContent += data.content;
+            // Update messages state with accumulated content
+          }
+        }
+      }
+    }
+
+    setMessages([...newMessages, { role: "assistant", content: assistantContent }]);
+    setIsStreaming(false);
+  }, [messages, model, getToken, location]);
+
+  return { messages, sendMessage, isStreaming, open, setOpen, model, setModel };
+}
+```
+
+### Frontend: Chat Panel UI
+
+The panel renders as an **inline flex sibling** — not a modal overlay — so users can see the page data alongside the chat:
+
+```tsx
+<div className="flex h-screen">
+  <Sidebar />
+  <main className="flex-1 overflow-auto min-w-0">  {/* min-w-0 is critical */}
+    <Outlet />
+  </main>
+  <ChatPanel open={chat.open} ... />  {/* Appears as right panel */}
+</div>
+```
+
+Make the panel resizable with a drag handle:
+- Track `width` in state, persist to `localStorage`
+- Clamp between 320px and 800px
+- Set `document.body.style.cursor = "col-resize"` during drag
+
+### Model Selection Strategy
+
+Use OpenRouter for multi-model access. Tier by cost and capability:
+
+| Tier | Models | Cost/question* | Use for |
+|------|--------|----------------|---------|
+| **Premium** | Claude Opus 4.6 | ~$0.07 | Complex multi-step analysis |
+| **Pro** | Sonnet 4.6, Gemini 2.5 Pro, GPT-4.1 | ~$0.02-0.04 | General intelligence |
+| **Fast** | Gemini 2.5 Flash, GPT-4.1 Mini, Haiku 4.5 | ~$0.005-0.01 | **Default — best for SQL/tools** |
+| **Budget** | DeepSeek V3.2, GPT-4.1 Nano | ~$0.001-0.002 | Simple lookups |
+
+*~6k input + 1.4k output tokens per question with tool use.
+
+**Default to the Fast tier** (GPT-4.1 Mini). SQL generation doesn't need flagship-tier reasoning, and at ~$0.005/question you can handle hundreds of queries/day for under $1.
+
+Let users pick a higher tier from a dropdown when they need deeper analysis.
+
+### Safety Checklist
+
+- [ ] **Keyword blocklist** — regex `\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE)\b` on every query
+- [ ] **Sensitive column blocking** — prevent `SELECT *` from credential tables; block specific column names
+- [ ] **Row limit** — auto-append `LIMIT 200` when no LIMIT present
+- [ ] **Auth required** — Clerk token validation on every request
+- [ ] **Model allowlist** — backend validates model ID against approved list
+- [ ] **Max tool rounds** — cap at 6-8 to prevent infinite loops
+- [ ] **System prompt prohibitions** — explicitly tell the LLM what NOT to do
+
+### Environment Variables
+
+```bash
+# apps/api/.dev.vars (or wrangler secrets for production)
+OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxx
+
+# Optional: route through Cloudflare AI Gateway for logging/caching
+# Set base URL to: https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_name}/openrouter
+```
+
+### Common Pitfalls
+
+| Pitfall | Solution |
+|---------|----------|
+| LLM says "I can't do that" | Add "always try a query first" to system prompt |
+| Wrong column names | Include full schema in system prompt, not just table names |
+| `BEGIN READ ONLY` fails on PlanetScale | Don't use transaction wrappers — run SELECT directly |
+| Multi-statement SQL fails via Hyperdrive | Execute single query with `client.unsafe()` |
+| `Boolean("false") === true` | Use `z.preprocess()` not `z.coerce.boolean()` for query params |
+| Model ID not found on OpenRouter | Verify against `curl https://openrouter.ai/api/v1/models` |
+| High costs | Default to Fast tier model; let users upgrade per-question |
+| Password leaks | Block at SQL level (keyword check), not just prompt level |
+
+### OpenRouter API Quick Reference
+
+```bash
+# List available models
+curl -s https://openrouter.ai/api/v1/models \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" | jq '.data[].id'
+
+# Test a completion
+curl https://openrouter.ai/api/v1/chat/completions \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-4.1-mini",
+    "messages": [{"role": "user", "content": "hello"}],
+    "stream": false
+  }'
+
+# Check your balance
+curl https://openrouter.ai/api/v1/auth/key \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY"
+```
+
+---
+
 ## 📚 Useful Links
 
 - [Hono Docs](https://hono.dev/)
@@ -1204,3 +1584,4 @@ cd ../..
 - [TanStack Query](https://tanstack.com/query/latest)
 - [Drizzle ORM](https://orm.drizzle.team/)
 - [Clerk Docs](https://clerk.com/docs)
+- [OpenRouter Docs](https://openrouter.ai/docs)
