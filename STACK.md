@@ -1212,12 +1212,70 @@ function buildSystemPrompt(page: string): string {
     "- Always use query_for_report (not run_readonly_query) for report data.",
     "- query_for_report returns up to 5,000 rows — full datasets, not samples.",
     "",
+    "## CSV Exports and Large Reports",
+    "- generate_csv_report: use when user asks for 'CSV', 'spreadsheet', 'download the data'.",
+    "- queue_report: use when user says 'email me', 'send a report' — confirm email address first.",
+    "- For truncated results: overflow card appears automatically, no need to proactively offer export.",
+    "",
     `The user is currently on the **${page}** page.`,
     "",
     SCHEMA_REFERENCE,
   ].join("\n");
 }
 ```
+
+### Large Dataset Export Pattern
+
+When AI query results are truncated, emit a `data_overflow` SSE event — the frontend renders an overflow card with export options rather than silently showing partial data.
+
+Three distinct paths based on user intent:
+
+| Action | Tool | Mechanism | Result |
+|--------|------|-----------|--------|
+| Immediate download | `generate_csv_report` | Unlimited query → R2 → `csv_download` preview | User clicks Download |
+| Email delivery | `queue_report` | Cloudflare Workflow (async) | Email with attachment |
+| Overflow card CSV | — | `POST /export-csv` → direct bytes | Browser download |
+
+The overflow card stores the user's last choice (CSV / PDF / Email) in `localStorage` so preference is remembered across sessions.
+
+For immediate CSV downloads from an endpoint, **stream the CSV bytes directly in the response** — don't upload to R2 and return a URL. Two round-trips for a single user action is unnecessary. R2 is only needed when the file must persist (AI-generated previews, async workflow results).
+
+### Cloudflare Workflows for Async AI Jobs
+
+Use Cloudflare Workflows (not Durable Objects) for long-running AI-triggered jobs like report generation and email delivery. Workflows survive the 30-second Worker CPU limit and have built-in step retries.
+
+Key differences from Durable Objects:
+- **No `[[migrations]]` in wrangler.toml** — Workflows don't need them (that's DO-only)
+- Steps are durable — if a step fails it retries without re-running prior steps
+- Each step must return serializable data (use `as unknown as T` casts against Cloudflare's `Serializable<T>`)
+
+```toml
+# wrangler.toml
+[[workflows]]
+name = "report-generator"
+binding = "REPORT_WORKFLOW"
+class_name = "ReportWorkflow"
+```
+
+```typescript
+// Top-level export required — Wrangler discovers it this way
+export { ReportWorkflow } from "./workflows/ReportWorkflow";
+```
+
+```typescript
+export class ReportWorkflow extends WorkflowEntrypoint<Env, ReportParams> {
+  async run(event: WorkflowEvent<ReportParams>, step: WorkflowStep) {
+    const rows = (await step.do("run-query",
+      { retries: { limit: 2, delay: "5 seconds" } },
+      async () => runQueryUnlimited(this.env, query)
+    )) as unknown as Record<string, unknown>[];
+
+    // subsequent steps...
+  }
+}
+```
+
+See `AI-CHAT.md` for full Workflow boilerplate, SSE event schemas, tool definitions, and DataOverflowCard implementation.
 
 ---
 
