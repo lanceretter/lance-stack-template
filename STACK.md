@@ -1071,14 +1071,14 @@ Use **Server-Sent Events (SSE)** for streaming — not WebSockets. SSE is simple
 
 ### Two-Tier Query Limits
 
-Never use the same query tool for chat answers and report generation. Conversational queries need a tight limit (fast, cheap); reports need full data.
+Conversational queries need a tight row limit (fast, cheap). Export/report queries need full data. Keep them as separate tools with separate limits — otherwise the AI uses the chat tool for reports and silently truncates.
 
 ```typescript
-const MAX_CHAT_ROWS = 200;    // for run_readonly_query — chat answers
-const MAX_REPORT_ROWS = 5000; // for query_for_report — PDF/report data
+const MAX_CHAT_ROWS = 200;   // run_readonly_query — chat answers only
+// Exports use runQueryUnlimited (no cap) via generate_csv_report / queue_report
 ```
 
-Make the distinction explicit in both the tool description and the system prompt — otherwise the AI will use the chat tool for reports and silently produce incomplete PDFs.
+Make the distinction explicit in tool descriptions and the system prompt.
 
 ### Explicit Loop Termination (The Critical Pattern)
 
@@ -1208,13 +1208,9 @@ function buildSystemPrompt(page: string): string {
     "- If you get 0 rows twice on the same concept, call need_clarification immediately.",
     "- Never run more than 2 queries on the same concept without answering or asking.",
     "",
-    "## Reports & PDFs",
-    "- Always use query_for_report (not run_readonly_query) for report data.",
-    "- query_for_report returns up to 5,000 rows — full datasets, not samples.",
-    "",
-    "## CSV Exports and Large Reports",
+    "## PDF Reports and Exports",
     "- generate_csv_report: use when user asks for 'CSV', 'spreadsheet', 'download the data'.",
-    "- queue_report: use when user says 'email me', 'send a report' — confirm email address first.",
+    "- queue_report: use for ALL PDF requests and when user says 'email me a report'. Confirm email first. PDFs are always emailed — there is no inline PDF delivery.",
     "- For truncated results: overflow card appears automatically, no need to proactively offer export.",
     "",
     `The user is currently on the **${page}** page.`,

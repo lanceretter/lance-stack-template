@@ -310,23 +310,6 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
-      name: "query_for_report",
-      description:
-        "Run a read-only SQL query returning up to 5,000 rows. Use ONLY when generating report data. " +
-        "Never use this for conversational answers.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string" },
-          title: { type: "string", description: "Report title shown in the PDF/email" },
-        },
-        required: ["query", "title"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
       name: "generate_csv_report",
       description:
         "Download a dataset as a CSV spreadsheet immediately. Use when the user says 'CSV', " +
@@ -346,8 +329,9 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "queue_report",
       description:
-        "Email a full report (PDF or CSV) asynchronously. Use when the user says 'email me', " +
-        "'send a report'. Always confirm the email address before calling this.",
+        "Email a full report (PDF or CSV) asynchronously. Use for ALL PDF requests and when the user " +
+        "says 'email me a report'. Always confirm the email address before calling this. " +
+        "PDFs are always emailed — there is no inline PDF delivery.",
       parameters: {
         type: "object",
         properties: {
@@ -442,8 +426,6 @@ export interface ActionPreview {
   action:
     | "send_email"
     | "send_sms"
-    | "create_pdf"
-    | "update_pdf"
     | "csv_download"
     | "report_queued";
   payload: Record<string, unknown>;
@@ -459,7 +441,7 @@ export interface ActionPreview {
 
 ### Action types
 
-- **`send_email` / `send_sms` / `create_pdf` / `update_pdf`** — standard confirmable actions. Frontend shows Execute + Dismiss buttons. `POST /execute-action` runs the side effect.
+- **`send_email` / `send_sms`** — confirmable actions. Frontend shows Execute + Dismiss buttons. `POST /execute-action` runs the side effect.
 - **`csv_download`** — AI-generated CSV stored in R2. Frontend shows Download + Dismiss. No execute endpoint needed — download via `GET /csv/:csvId`.
 - **`report_queued`** — Cloudflare Workflow already running. Frontend shows "You'll receive an email when ready" + Dismiss only. No execute button.
 
