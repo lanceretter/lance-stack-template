@@ -967,8 +967,11 @@ crons = ["0 8 * * *"]  # Daily at 8 AM UTC
 | **Frontend** | Cloudflare Pages | `wrangler pages deploy dist` |
 | **API** | Cloudflare Workers | `wrangler deploy` |
 
-### Root package.json Scripts
+### One-Command Deploy Setup
 
+Always wire up deploy scripts so anyone can run `npm run deploy` from the root without knowing project names or flags.
+
+**Root `package.json`:**
 ```json
 {
   "scripts": {
@@ -976,7 +979,7 @@ crons = ["0 8 * * *"]  # Daily at 8 AM UTC
     "dev:api": "npm run dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
     "build": "npm run build --workspaces",
-    "deploy": "npm run deploy:api && npm run deploy:web",
+    "deploy": "npm run deploy -w apps/api && npm run deploy -w apps/web",
     "deploy:api": "npm run deploy --workspace=apps/api",
     "deploy:web": "npm run deploy --workspace=apps/web"
   },
@@ -984,6 +987,235 @@ crons = ["0 8 * * *"]  # Daily at 8 AM UTC
   "devDependencies": {
     "concurrently": "^8.2.2"
   }
+}
+```
+
+**`apps/api/package.json`** — pass `--env=""` when wrangler.toml has multiple `[env.*]` sections, or you'll get a warning every deploy:
+```json
+{
+  "scripts": {
+    "deploy": "wrangler deploy --env=\"\""
+  }
+}
+```
+
+**`apps/web/package.json`** — chain build + pages deploy:
+```json
+{
+  "scripts": {
+    "build:prod": "VITE_API_URL=https://api.yourdomain.com/api/v1 npm run build",
+    "deploy": "npm run build:prod && wrangler pages deploy"
+  }
+}
+```
+
+**`apps/web/wrangler.toml`** — add this so wrangler knows the Pages project name and output dir without flags:
+```toml
+name = "your-pages-project-name"
+pages_build_output_dir = "dist"
+```
+
+Without this file, `wrangler pages deploy` requires `--project-name` every time, which is easy to forget or get wrong.
+
+### Durable Objects — Migration History
+
+Cloudflare tracks DO migration tags server-side. Your `wrangler.toml` must always reflect the **full history** of applied migrations, not just the current state. Getting out of sync (e.g. by deploying on one machine but not pulling before deploying on another) causes errors like:
+
+```
+Cannot apply new-class migration to class 'MyDO' that is already depended on [code: 10074]
+```
+
+**Rules:**
+- Never delete migration entries from `wrangler.toml` — only add new ones
+- If you deleted a DO class and now need it back: add a `deleted_classes` migration, then a new `new_classes` migration
+- If Cloudflare reports a tag you don't have locally, add it back to re-sync
+
+```toml
+[[migrations]]
+tag = "v1"
+new_classes = ["MyWorker"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["AnotherWorker"]
+
+# If you accidentally deployed a class and then removed it:
+[[migrations]]
+tag = "v3"
+new_classes = ["TempClass"]
+
+[[migrations]]
+tag = "v4"
+deleted_classes = ["TempClass"]
+```
+
+**Always pull before deploying on a new machine/session** to avoid migration drift.
+
+---
+
+## 🤖 AI Chat / Agentic Features
+
+Patterns for embedding an AI assistant with tool use (SQL queries, actions, PDF generation, etc.) into an app. Based on conquest-hub's Hub Assistant.
+
+### Architecture
+
+```
+Browser → SSE stream → Cloudflare Worker → OpenRouter → LLM
+                                         ↓
+                                    tool loop (up to N rounds)
+                                         ↓
+                                    execute tools (DB, APIs, DOs)
+```
+
+Use **Server-Sent Events (SSE)** for streaming — not WebSockets. SSE is simpler, works with Cloudflare Workers, and streams token-by-token naturally.
+
+### Two-Tier Query Limits
+
+Never use the same query tool for chat answers and report generation. Conversational queries need a tight limit (fast, cheap); reports need full data.
+
+```typescript
+const MAX_CHAT_ROWS = 200;    // for run_readonly_query — chat answers
+const MAX_REPORT_ROWS = 5000; // for query_for_report — PDF/report data
+```
+
+Make the distinction explicit in both the tool description and the system prompt — otherwise the AI will use the chat tool for reports and silently produce incomplete PDFs.
+
+### Explicit Loop Termination (The Critical Pattern)
+
+The naive tool-use loop breaks when the AI produces text with no tool calls. This is fragile — the AI can exhaust all rounds with no response, or loop endlessly on failed queries.
+
+**The fix: explicit meta-tools for termination.** The AI calls `need_clarification` when stuck rather than looping forever. The server detects it and hard-exits the loop.
+
+```typescript
+// In tool definitions
+{
+  name: "need_clarification",
+  description: "Call after 2+ failed attempts. NEVER keep querying — ask the user instead.",
+  parameters: {
+    question: "string", // specific question for the user
+    tried: "string",    // one-sentence summary of what failed
+  }
+}
+
+// In executeTool
+case "need_clarification":
+  return JSON.stringify({
+    type: "clarification_request",
+    question: args.question,
+    tried: args.tried,
+  });
+```
+
+```typescript
+// In the tool loop — detect and hard-exit
+if (parsedResult?.type === "clarification_request") {
+  send("clarification", result); // SSE event to frontend
+  send("done", "{}");
+  controller.close();
+  return; // exits the entire stream handler
+}
+```
+
+### Three-Layer Guardrail System
+
+No single mechanism is enough across all models. Use all three:
+
+1. **`need_clarification` tool** (structural) — AI explicitly signals stuck state, server hard-exits loop
+2. **Empty-result streak detection** (server-side guardrail) — after 3 consecutive zero-row queries, inject a forced nudge as a `user` role message: *"call need_clarification now"*
+3. **System prompt rules** (prompt-level) — explicit: try once → try one alternative → call `need_clarification`. Never more than 2 queries on the same concept
+
+```typescript
+// Track empty results server-side
+if (parsedResult?.rowCount === 0) emptyResultStreak++;
+else emptyResultStreak = 0;
+
+if (emptyResultStreak >= 3) {
+  currentMessages.push({
+    role: "user",
+    content: "Your last 3 queries returned 0 results. Call need_clarification now.",
+  });
+  emptyResultStreak = 0;
+}
+```
+
+### Force Final Response on Round Limit
+
+When `MAX_TOOL_ROUNDS` is hit, strip tools from the last LLM call so it's forced to respond with text rather than silently ending:
+
+```typescript
+body: JSON.stringify({
+  model,
+  messages: currentMessages,
+  // Last round: no tools → forces text response
+  ...(toolRound < MAX_TOOL_ROUNDS ? { tools: TOOL_DEFINITIONS } : {}),
+  stream: true,
+}),
+```
+
+### Action Preview Pattern
+
+Side-effect tools (send email, generate PDF, trigger sync) should **not execute immediately**. Return a preview object the user must confirm:
+
+```typescript
+// Draft tool returns preview, not execution
+case "draft_email":
+  return JSON.stringify({
+    type: "action_preview",
+    preview_id: crypto.randomUUID(),
+    action: "send_email",
+    payload: { to, subject, body_html },
+    display: { title: "Send Email", summary: `To: ${to}`, details: { subject } },
+  });
+```
+
+The server emits an `action_preview` SSE event. The frontend shows a confirmation card. A separate `POST /execute-action` endpoint runs the actual side effect after user confirms.
+
+### API Auth with Multi-Tenant Context
+
+When your API has both auth (who) and org context (which tenant), pass both as headers. Bake this into a shared `useApiClient` hook:
+
+```typescript
+export function useApiClient() {
+  const { getToken } = useAuth();
+  const { selectedOrgId } = useOrgContext();
+
+  async function fetchWithAuth(endpoint, options = {}) {
+    const token = await getToken();
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(selectedOrgId ? { "X-Org-Id": selectedOrgId } : {}),
+    };
+    // ...
+  }
+}
+```
+
+**Never** make raw `fetch()` calls in individual hooks — they'll miss the org header and get 403s. Route everything through the shared client.
+
+### System Prompt Structure
+
+```typescript
+function buildSystemPrompt(page: string): string {
+  return [
+    "You are [Name], an AI embedded in [App].",
+    "",
+    "## How to Answer Data Questions",
+    "- Use run_readonly_query for ANY data question...",
+    "",
+    "## When You're Stuck — Use need_clarification",
+    "- If a query returns 0 rows, try ONE alternative approach.",
+    "- If you get 0 rows twice on the same concept, call need_clarification immediately.",
+    "- Never run more than 2 queries on the same concept without answering or asking.",
+    "",
+    "## Reports & PDFs",
+    "- Always use query_for_report (not run_readonly_query) for report data.",
+    "- query_for_report returns up to 5,000 rows — full datasets, not samples.",
+    "",
+    `The user is currently on the **${page}** page.`,
+    "",
+    SCHEMA_REFERENCE,
+  ].join("\n");
 }
 ```
 
