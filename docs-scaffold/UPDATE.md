@@ -61,6 +61,56 @@ Version bumps follow semver:
 
 ## Versions
 
+### v1.1.0 (2026-04-18)
+
+Hierarchical coverage + accuracy gates. Proven out in `conquest-lpr`.
+**Backwards compatible** — existing v1.0.0 consumers can auto-update.
+
+- **App-local docs gated.** `doc-check.ts` now scans
+  `apps/*/AGENTS.md` and `packages/*/AGENTS.md` with the same rules as
+  `docs/agent/*.md`, plus:
+  - **Scope check:** app-local docs may only claim `dependent_paths`
+    inside their own directory (or `packages/`).
+  - **Orphan check:** every app-local AGENTS.md must be linked from the
+    root `AGENTS.md` router.
+- **last_verified bump enforcement** (`--pr-base=<sha>`). If any file in
+  a doc's `dependent_paths` changed between base and HEAD, the doc
+  itself must be in the diff and `last_verified` must be today (UTC) or
+  later. Closes the "changed the code but forgot to re-read the doc"
+  accuracy gap.
+- **Markdown link integrity.** `[text](path.md)` relative links are
+  validated across all canonical docs. Anchors and external URLs are
+  skipped. Already caught real drift in first rollout.
+- **README policy lint.** When an app has both `README.md` and
+  `AGENTS.md`, and README > 80 lines, `doc-check.ts` warns (soft
+  signal). Intent: READMEs stay human-onboarding-only, AGENTS.md is
+  canonical agent-facing truth.
+- **Push-to-main trigger.** `doc-check.yml` now also runs on direct
+  pushes to `main` (static coherence only — no `last_verified`
+  enforcement since there's no meaningful base). Catches broken paths,
+  missing front-matter, orphans on ad-hoc commits.
+- **Weekly cron covers app-local + absolute-age signal.** The staleness
+  workflow's inline TS now scans `apps/*/AGENTS.md` and
+  `packages/*/AGENTS.md` as well as `docs/agent/`. New **"ageing"**
+  signal flags any doc whose `last_verified` is over 90 days old, even
+  if no dependent_paths code changed. Safety net for docs in quiet
+  areas.
+- **Per-doc tracking issues.** Weekly cron now creates one GH issue per
+  stale doc + one per ageing doc (actionable per owner), plus ONE
+  combined drift dashboard (noisy, informational). Labels:
+  `doc-staleness` / `doc-ageing` / `doc-drift`. Previous issues with
+  the same labels close first so the set stays fresh.
+
+Migration (v1.0.0 → v1.1.0):
+1. Run the update script (or manual copy per the section above).
+2. Your first PR after update will fail if any doc has broken
+   `dependent_paths` (always did, but worth re-checking after path
+   tweaks).
+3. If you have `apps/*/AGENTS.md` without front-matter, either add
+   front-matter and a router row, or rename them to `NOTES.md` to
+   signal they're not canonical. See the example migration in
+   `examples/`.
+
 ### v1.0.0 (2026-04-18)
 
 Initial release. Extracted from `conquest-solutions/conquest-hub` PRs #8

@@ -4,28 +4,36 @@
 PROJECT_NAME is an application that does WHAT for WHOM.
 Deployed at **https://example.com**.
 
-**This file is a router.** Full details live in `docs/agent/*.md`. Read the
-focused doc before editing. Every doc carries a `last_verified` date and a
-`dependent_paths` list in front-matter — if you touch a listed path, you
-MUST update the matching doc in the same PR (enforced by
-`scripts/doc-check.ts` in CI).
+**This file is a router.** Canonical per-app details live in
+`apps/<app>/AGENTS.md` (where agents end up when they `cd` into an app).
+Cross-cutting concerns live in `docs/agent/*.md`. Every doc carries a
+`last_verified` date and a `dependent_paths` list in front-matter — if you
+touch a listed path, you MUST update the matching doc in the same PR. CI
+gate: `scripts/doc-check.ts`.
 
 ## If you're touching ...
 
+### Per-app (canonical docs live *in* the app)
+
 <!--
-CUSTOMIZE this table for your project. Every row pairs a code location with
-the doc that describes it. doc-check.ts verifies every linked doc exists.
+CUSTOMIZE: remove the example rows, keep one row per app/package in your
+repo. Every app/package with its own AGENTS.md MUST be listed here —
+doc-check enforces this (orphan check).
 -->
 
-| This area | Read this doc |
+| App / path | Canonical doc |
 |---|---|
-| `src/db/` or `schema/` | [`docs/agent/database.md`](docs/agent/database.md) |
-| `migrations/` | [`docs/agent/database.md`](docs/agent/database.md) |
-| `src/routes/` or API handlers | [`docs/agent/api.md`](docs/agent/api.md) |
-| Frontend pages | [`docs/agent/frontend.md`](docs/agent/frontend.md) |
-| `src/middleware/auth.ts` or auth flow | [`docs/agent/architecture.md`](docs/agent/architecture.md) |
-| Environment variables | [`docs/agent/deployment.md`](docs/agent/deployment.md) |
-| Deploying | [`docs/agent/deployment.md`](docs/agent/deployment.md) |
+| `apps/api/` (backend API) | [`apps/api/AGENTS.md`](apps/api/AGENTS.md) |
+| `apps/web/` (frontend) | [`apps/web/AGENTS.md`](apps/web/AGENTS.md) |
+| `packages/shared/` (shared library) | [`packages/shared/AGENTS.md`](packages/shared/AGENTS.md) |
+
+### Cross-cutting (spans multiple apps)
+
+| Topic | Doc |
+|---|---|
+| Monorepo layout, tech stack, architectural decisions | [`docs/agent/architecture.md`](docs/agent/architecture.md) |
+| Schema source of truth, migrations | [`docs/agent/database.md`](docs/agent/database.md) |
+| Deploy, CI, env vars | [`docs/agent/deployment.md`](docs/agent/deployment.md) |
 
 ## Before you start
 
@@ -44,13 +52,23 @@ Each focused doc also carries its own `## Timeline` section at the bottom.
 
 ## Doc health
 
-- `doc-check.ts` runs on every PR via GitHub Actions. It fails CI if any
-  `dependent_paths` entry no longer exists or if a router target is missing.
-- Weekly cron surfaces docs that may be stale (code in `dependent_paths`
-  modified more recently than `last_verified`, or exported symbols not
-  mentioned in prose).
-- To add a new focused doc: create `docs/agent/<topic>.md` with front-matter,
-  add a row to the router table above.
+- `scripts/doc-check.ts` runs on every PR (and push to `main`) via GitHub
+  Actions. It fails CI if:
+  - Any `dependent_paths` entry (in any doc) no longer exists.
+  - An `apps/*/AGENTS.md` or `packages/*/AGENTS.md` is missing front-matter
+    or claims `dependent_paths` outside its own directory.
+  - An app-local AGENTS.md exists but isn't linked from this router.
+  - Router links to a missing `docs/agent/<name>.md`.
+  - **PR only:** covered code changed without `last_verified` being bumped
+    to today.
+- Weekly cron (Mon 14:00 UTC) opens per-doc tracking issues for stale /
+  ageing / drifted docs.
+- To add a new focused doc:
+  - Cross-cutting → create `docs/agent/<topic>.md` + row in the cross-cutting
+    table above.
+  - Per-app → create `apps/<name>/AGENTS.md` (or `packages/<name>/AGENTS.md`)
+    with front-matter + row in the per-app table above.
+  - Add a checkbox to `.github/pull_request_template.md`.
 - See [`CLAUDE.md`](CLAUDE.md) for non-negotiable rules.
 - Installed via [lance-stack-template/docs-scaffold](https://github.com/lanceretter/lance-stack-template/tree/main/docs-scaffold)
   — see `.docs-scaffold-version` for installed version.

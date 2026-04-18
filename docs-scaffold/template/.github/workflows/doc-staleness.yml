@@ -75,60 +75,142 @@ jobs:
             return latest;
           }
 
+          // Canonical doc locations: cross-cutting under docs/agent/, plus
+          // per-app AGENTS.md under apps/*/ and packages/*/ (hierarchical
+          // rollout 2026-04-18). All three surfaces get the same staleness
+          // and absolute-age signals.
           const stale: Array<{ doc: string; verified: string; newest: string }> = [];
-          const files = await readdir("docs/agent").catch(() => []);
-          for (const f of files) {
-            if (!f.endsWith(".md")) continue;
-            const content = await readFile(`docs/agent/${f}`, "utf8");
+          const ageing: Array<{ doc: string; verified: string; age_days: number }> = [];
+          const ABSOLUTE_AGE_THRESHOLD_DAYS = 90;
+
+          async function scanDoc(path: string) {
+            const content = await readFile(path, "utf8");
             const meta = fm(content);
             const verified = meta.last_verified as string | undefined;
             const deps = meta.dependent_paths as string[] | undefined;
-            if (!verified || !deps || deps.length === 0) continue;
+            if (!verified) return;
+
+            // Absolute-age safety net — doc hasn't been re-verified in a long time
+            const verifiedMs = Date.parse(verified + "T00:00:00Z");
+            if (Number.isFinite(verifiedMs)) {
+              const ageDays = Math.floor((Date.now() - verifiedMs) / 86400000);
+              if (ageDays > ABSOLUTE_AGE_THRESHOLD_DAYS) {
+                ageing.push({ doc: path, verified, age_days: ageDays });
+              }
+            }
+
+            // Mtime-based staleness — covered code changed more recently than last verify
+            if (!deps || deps.length === 0) return;
             const newest = latestMtime(deps);
             if (newest && newest.slice(0, 10) > verified) {
-              stale.push({
-                doc: `docs/agent/${f}`,
-                verified,
-                newest: newest.slice(0, 10),
-              });
+              stale.push({ doc: path, verified, newest: newest.slice(0, 10) });
             }
           }
-          console.log(JSON.stringify(stale, null, 2));
+
+          // Cross-cutting: docs/agent/*.md
+          for (const f of await readdir("docs/agent").catch(() => [])) {
+            if (!f.endsWith(".md")) continue;
+            await scanDoc(`docs/agent/${f}`);
+          }
+
+          // App-local: apps/*/AGENTS.md and packages/*/AGENTS.md
+          for (const root of ["apps", "packages"]) {
+            for (const d of await readdir(root).catch(() => [])) {
+              const p = `${root}/${d}/AGENTS.md`;
+              if (existsSync(p)) await scanDoc(p);
+            }
+          }
+
+          console.log(JSON.stringify({ stale, ageing }, null, 2));
           EOF
           bun run /tmp/staleness.ts > /tmp/stale.json
-          STALE_COUNT=$(cat /tmp/stale.json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          STALE_COUNT=$(cat /tmp/stale.json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d["stale"]))')
+          AGEING_COUNT=$(cat /tmp/stale.json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d["ageing"]))')
           echo "count=$STALE_COUNT" >> $GITHUB_OUTPUT
+          echo "ageing=$AGEING_COUNT" >> $GITHUB_OUTPUT
           cat /tmp/stale.json
-      - name: Upsert tracking issue
-        if: steps.check.outputs.count != '0' || steps.drift.outputs.warnings != '0'
+      - name: Upsert tracking issues
+        if: steps.check.outputs.count != '0' || steps.check.outputs.ageing != '0' || steps.drift.outputs.warnings != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          STALE=$(cat /tmp/stale.json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          # Strategy: one issue per DOC that needs action (stale or ageing),
+          # plus ONE combined dashboard for drift warnings (those are noisy
+          # and informational — not per-doc actionable). Previous open issues
+          # with the same labels are closed first so the set stays fresh.
+
           DRIFT=${{ steps.drift.outputs.warnings }}
-          TITLE="docs: weekly health — $STALE stale, $DRIFT drift"
-          {
-            echo "Automated weekly scan. Two signals:"
-            echo ""
-            echo "**Staleness** ($STALE): docs where linked source files were modified"
-            echo "more recently than the doc's \`last_verified\` date."
-            echo ""
-            echo '```json'
-            cat /tmp/stale.json
-            echo '```'
-            echo ""
-            echo "**Drift** ($DRIFT warnings): exported symbols in \`dependent_paths\`"
-            echo "source files that aren't mentioned in the doc. Low-confidence signal —"
-            echo "some are genuine gaps, some are internal helpers that legitimately don't"
-            echo "need doc coverage."
-            echo ""
-            echo '```json'
-            python3 -c "import json; d=json.load(open('/tmp/drift.json')); print(json.dumps(d['findings'], indent=2))"
-            echo '```'
-            echo ""
-            echo "Close this issue once docs are re-verified. The next weekly run will"
-            echo "re-open if signals remain."
-          } > /tmp/body.md
-          gh issue list --label doc-staleness --state open --json number --jq '.[].number' | xargs -I{} gh issue close {} --reason "not planned" 2>/dev/null || true
-          gh issue create --title "$TITLE" --body-file /tmp/body.md --label doc-staleness 2>/dev/null || \
-            gh issue create --title "$TITLE" --body-file /tmp/body.md
+
+          # Close prior doc-staleness / doc-ageing / doc-drift issues.
+          for label in doc-staleness doc-ageing doc-drift; do
+            gh issue list --label "$label" --state open --json number --jq '.[].number' \
+              | xargs -I{} gh issue close {} --reason "not planned" 2>/dev/null || true
+          done
+
+          # Ensure labels exist (idempotent — ignore errors)
+          gh label create doc-staleness --color "d93f0b" --description "docs covered by dependent_paths have drifted" 2>/dev/null || true
+          gh label create doc-ageing     --color "fbca04" --description "docs with last_verified older than 90 days" 2>/dev/null || true
+          gh label create doc-drift      --color "fef2c0" --description "informational drift dashboard" 2>/dev/null || true
+
+          # Per-doc staleness issues (highest-signal — covered code changed)
+          python3 <<'PY' > /tmp/stale-issues.sh
+          import json
+          d = json.load(open('/tmp/stale.json'))
+          for item in d['stale']:
+              doc = item['doc']
+              verified = item['verified']
+              newest = item['newest']
+              title = f"docs: {doc} is stale (verified {verified}, code changed {newest})"
+              body = (
+                  f"The docs coherence cron detected that code in this doc's "
+                  f"`dependent_paths` was modified on `{newest}`, which is "
+                  f"newer than the doc's `last_verified: {verified}`.\n\n"
+                  f"**Action:** re-read `{doc}` against the current code, "
+                  f"update anything that drifted, and bump `last_verified` to today.\n\n"
+                  f"Close this issue once done. If the next weekly scan still sees staleness, "
+                  f"a fresh issue will open."
+              )
+              # Shell-quote via printf %q
+              print(f"gh issue create --title {json.dumps(title)} --body {json.dumps(body)} --label doc-staleness")
+          PY
+          bash /tmp/stale-issues.sh || true
+
+          # Per-doc ageing issues (last_verified > 90 days even without code changes)
+          python3 <<'PY' > /tmp/ageing-issues.sh
+          import json
+          d = json.load(open('/tmp/stale.json'))
+          for item in d['ageing']:
+              doc = item['doc']
+              verified = item['verified']
+              age = item['age_days']
+              title = f"docs: {doc} hasn't been re-verified in {age} days (since {verified})"
+              body = (
+                  f"The docs coherence cron flagged that `{doc}` has `last_verified: "
+                  f"{verified}` — {age} days ago. Even if the code in `dependent_paths` "
+                  f"hasn't changed, reality around it may have.\n\n"
+                  f"**Action:** re-read `{doc}` against current code, confirm it's still "
+                  f"accurate, and bump `last_verified` to today.\n\n"
+                  f"Close this issue once done."
+              )
+              print(f"gh issue create --title {json.dumps(title)} --body {json.dumps(body)} --label doc-ageing")
+          PY
+          bash /tmp/ageing-issues.sh || true
+
+          # Single drift dashboard (noisy, informational — one issue collects all)
+          if [ "$DRIFT" != "0" ]; then
+            {
+              echo "Drift dashboard — $DRIFT warnings where exported symbols in \`dependent_paths\` source files aren't mentioned in the doc's prose."
+              echo ""
+              echo "This is a **low-confidence** signal. Some are genuine gaps (add to the doc); some are internal helpers that legitimately don't need doc coverage (safe to ignore)."
+              echo ""
+              echo "This issue auto-closes next week; a fresh one opens if drift remains."
+              echo ""
+              echo '```json'
+              python3 -c "import json; d=json.load(open('/tmp/drift.json')); print(json.dumps(d['findings'], indent=2))"
+              echo '```'
+            } > /tmp/drift-body.md
+            gh issue create \
+              --title "docs: drift dashboard ($DRIFT unreferenced symbols across docs)" \
+              --body-file /tmp/drift-body.md \
+              --label doc-drift || true
+          fi

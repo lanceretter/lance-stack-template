@@ -7,26 +7,62 @@ Adapted from Garry Tan's gbrain pattern (`skills/RESOLVER.md` — thin router,
 fat focused files, self-maintaining) and applied to team project docs instead
 of personal memory.
 
-**What you get:**
+**What you get (v1.1.0):**
 
-- `AGENTS.md` router + focused `docs/agent/*.md` per topic (architecture,
-  database, deployment, whatever applies to your project)
-- Front-matter on every doc with `last_verified` date and `dependent_paths`
-  list — the paths the doc is responsible for
-- `scripts/doc-check.ts` — CI-enforced coherence gate that fails PRs when
-  docs reference paths that no longer exist
-- Weekly GitHub Actions cron that opens a tracking issue when docs drift
-  (code modified more recently than `last_verified` OR new exported symbols
-  not mentioned in the doc)
-- `CLAUDE.md` with explicit non-negotiable rules for agents
-- PR template that ties scope changes to doc updates
+Three doc surfaces, all gated:
 
-**Why it stops rotting:** four reinforcing layers. A PR can skip one, not all.
+- **Root router** — `AGENTS.md` at repo root. Thin file pointing everywhere.
+- **Cross-cutting docs** — `docs/agent/*.md` for topics spanning multiple
+  apps (architecture, database, deployment, gotchas, _TIMELINE).
+- **Per-app canonical docs** — `apps/<app>/AGENTS.md` and
+  `packages/<pkg>/AGENTS.md`. Each is scoped to its own app/package code
+  (front-matter `dependent_paths` must stay within that directory, or
+  `packages/`). This is what Cursor/Codex/Claude find when agents `cd`
+  into a subdirectory.
 
-1. **CI gate** — `doc-check.ts` fails the PR if paths break.
-2. **PR template** — checklist nudges human or agent to update docs.
-3. **Weekly cron** — opens a tracking issue for aging/drifted docs.
-4. **CLAUDE.md rule** — agents read it at session start; enforces "update
+Every doc carries front-matter:
+
+```yaml
+---
+owner: lance
+last_verified: 2026-04-18
+dependent_paths:
+  - src/services/payment.ts
+  - src/db/schema/billing.ts
+---
+```
+
+Enforced signals (`scripts/doc-check.ts`):
+
+- Broken `dependent_paths` → **error**.
+- Missing front-matter → **error**.
+- App-local doc claiming deps outside its scope → **error**.
+- App-local doc not linked from root router (orphan) → **error**.
+- Router link to missing cross-cutting doc → **error**.
+- Broken `[text](path.md)` markdown link → **warn**.
+- `README.md` > 80 lines alongside `AGENTS.md` → **warn** (soft policy).
+- **PR-only:** covered code changed without `last_verified` being bumped
+  to today → **error**. (The single biggest accuracy gate.)
+
+Weekly cron (`doc-staleness.yml`):
+
+- **Staleness:** code in `dependent_paths` modified more recently than
+  `last_verified` → one GH issue per doc.
+- **Ageing:** `last_verified` older than 90 days → one GH issue per doc.
+- **Drift:** exported symbols in `dependent_paths` source files not
+  mentioned in the doc → one combined dashboard issue.
+
+**Why it stops rotting:** six reinforcing layers. A PR can skip one, not all.
+
+1. **Per-PR coherence gate** — `doc-check.ts` fails the PR if paths break
+   or app docs drift out of scope.
+2. **Per-PR last_verified gate** — changing covered code without
+   re-verifying the doc fails CI.
+3. **Push-to-main static gate** — direct commits to `main` still get
+   coherence checks (no last_verified enforcement there).
+4. **PR template** — checklist nudges human or agent to update docs.
+5. **Weekly cron** — per-doc tracking issues for drifted/ageing docs.
+6. **CLAUDE.md rule** — agents read it at session start; enforces "update
    docs in the same PR" as a non-negotiable.
 
 ## Quick install
@@ -76,7 +112,14 @@ up to 20 devs before the assumptions start to creak.
 
 ## Version
 
-Current: **v1.0.0** (2026-04-18 — conquest-hub ship).
+Current: **v1.1.0** (2026-04-18 — conquest-lpr hierarchical rollout).
+
+History:
+- **v1.1.0** (2026-04-18) — per-app AGENTS.md scope + orphan check,
+  `last_verified` bump enforcement on PRs, markdown link integrity,
+  README policy lint, push-to-main trigger, per-doc tracking issues,
+  absolute-age (90d) signal. Backwards-compatible with v1.0.0 consumers.
+- **v1.0.0** (2026-04-18) — initial release from conquest-hub PRs #8/#9.
 
 Bump when: breaking changes to `doc-check.ts` CLI or to the front-matter
 format. Consumers running older versions see a migration note in

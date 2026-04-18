@@ -36,10 +36,19 @@ dependent_paths:
   2. **Staleness signal**: weekly cron compares git mtime of these paths to `last_verified` and flags drift.
   3. **Symbol drift**: for `.ts` files, the drift scan extracts exported symbols and warns when they're not mentioned in the doc.
 
-### Rollup docs exempt from `dependent_paths`
+### Exemptions from `dependent_paths`
 
-Files starting with `_` (like `_TIMELINE.md`, `_GLOSSARY.md`) are roll-ups
-with no single code dependency. They can omit `dependent_paths`.
+Two ways a doc can legitimately have no code-dep tracking:
+
+1. **Rollup convention** — files starting with `_` (like `_TIMELINE.md`,
+   `_GLOSSARY.md`) are roll-ups with no single code dependency. They can
+   omit `dependent_paths` entirely.
+2. **Editorial opt-out** — set `dependent_paths: []` (or empty block).
+   For docs like `gotchas.md` or `architecture.md` overviews that
+   summarize cross-cutting patterns rather than tracking specific files.
+   The `last_verified` bump enforcement on PRs is skipped for these. Use
+   sparingly — most docs should have meaningful deps so the "re-read the
+   doc when covered code changes" signal actually fires.
 
 ## Body structure
 
@@ -141,10 +150,34 @@ eliminated (and then with a note).
 ## Doc update rules (enforced by CI + CLAUDE.md)
 
 1. Any PR touching code in a doc's `dependent_paths` MUST include a doc
-   update in the same PR. `doc-check.ts` catches deletes/renames; humans
-   catch semantic staleness.
+   update in the same PR. `doc-check.ts --pr-base=<sha>` enforces this —
+   not just path existence, but also that `last_verified` is bumped to
+   today when covered code changed. (v1.1.0+)
 2. Every doc update bumps `last_verified` to the PR date.
 3. Every behavior/data-model change adds a `## Timeline` entry to the
    relevant focused doc AND to `_TIMELINE.md`.
 4. Every new foot-gun discovered goes in `gotchas.md`.
-5. Every new focused doc gets a row in the `AGENTS.md` router table.
+5. Every new cross-cutting doc gets a row in the `AGENTS.md` router.
+   Every new `apps/*/AGENTS.md` gets a row too (orphan check fails
+   otherwise).
+
+## Three doc surfaces (v1.1.0+)
+
+The scaffold covers three complementary places to put agent-facing docs:
+
+| Surface | Lives at | Use for |
+|---|---|---|
+| **Root router** | `AGENTS.md` | Thin routing table. Points at everything. |
+| **Cross-cutting** | `docs/agent/*.md` | Topics that span multiple apps (architecture, database, deployment, gotchas, `_TIMELINE.md`). |
+| **App-local canonical** | `apps/<app>/AGENTS.md`, `packages/<pkg>/AGENTS.md` | Everything scoped to one app/package — workflows, conventions, release rules, app-specific gotchas. What Cursor/Codex find when agents `cd` into the app. |
+
+Rules enforced by `doc-check.ts`:
+
+- App-local docs may only claim `dependent_paths` inside their own
+  directory (or under `packages/`). Prevents apps from claiming each
+  other's code.
+- Every app-local doc must be linked from the root router (orphan check).
+- Markdown links `[text](path.md)` across any doc must resolve.
+- If `README.md` exists alongside `AGENTS.md` and is > 80 lines, a soft
+  warning fires. Recommend: README is human-onboarding + pointer;
+  AGENTS.md is canonical.
