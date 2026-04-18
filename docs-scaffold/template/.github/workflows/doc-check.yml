@@ -10,14 +10,41 @@ on:
       - "migrations/**"
       - "scripts/doc-check.ts"
       - ".github/workflows/doc-check.yml"
+  # Also run on direct pushes to main so ad-hoc commits still get the static
+  # coherence check (broken dependent_paths, missing front-matter, orphan app
+  # docs, scope violations). The last_verified-bump enforcement only runs on
+  # pull_request — there's no meaningful base to compare against on a direct
+  # push.
+  push:
+    branches: [main]
+    paths:
+      - "AGENTS.md"
+      - "docs/agent/**"
+      - "apps/**"
+      - "packages/**"
+      - "migrations/**"
+      - "scripts/doc-check.ts"
+      - ".github/workflows/doc-check.yml"
 
 jobs:
   doc-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so `git diff` and `git show $base:path` can resolve
+          # the PR base during the last_verified-bump enforcement check.
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - name: Run doc coherence check
-        run: bun run scripts/doc-check.ts
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Full check including last_verified-bump enforcement vs PR base.
+            bun run scripts/doc-check.ts --pr-base=${{ github.event.pull_request.base.sha }}
+          else
+            # Push-to-main: static coherence only (router, paths, front-matter,
+            # scope, orphan). No last_verified enforcement — there's no base.
+            bun run scripts/doc-check.ts
+          fi
