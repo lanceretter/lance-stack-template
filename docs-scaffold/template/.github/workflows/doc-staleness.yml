@@ -1,0 +1,134 @@
+name: Doc Staleness (Weekly)
+
+# Weekly cron. For every doc under docs/agent/, compares the doc's
+# last_verified date against the most recent git mtime of files listed in its
+# dependent_paths. Opens/updates a single tracking issue listing potentially
+# stale docs — does NOT fail CI, does NOT auto-edit docs.
+
+on:
+  schedule:
+    - cron: "0 14 * * 1"  # Mondays 14:00 UTC
+  workflow_dispatch:       # manual trigger
+
+jobs:
+  staleness:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need full history for git-log mtime comparison
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Run symbol drift scan
+        id: drift
+        run: |
+          bun run scripts/doc-check.ts --drift --json > /tmp/drift.json 2>&1 || true
+          WARN_COUNT=$(python3 -c "import json; print(json.load(open('/tmp/drift.json'))['warnings'])")
+          echo "warnings=$WARN_COUNT" >> $GITHUB_OUTPUT
+          cat /tmp/drift.json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(f"Drift scan: {d[\"warnings\"]} warnings across {len(set(f[\"file\"] for f in d[\"findings\"]))} docs")'
+      - name: Compute doc staleness
+        id: check
+        run: |
+          cat > /tmp/staleness.ts <<'EOF'
+          import { readdir, readFile } from "node:fs/promises";
+          import { execSync } from "node:child_process";
+          import { existsSync } from "node:fs";
+          import { join } from "node:path";
+
+          function fm(content: string): Record<string, string | string[]> {
+            const m = content.match(/^---\n([\s\S]*?)\n---\n/);
+            if (!m) return {};
+            const out: Record<string, string | string[]> = {};
+            let k: string | null = null;
+            let list: string[] | null = null;
+            for (const line of m[1].split("\n")) {
+              if (!line.trim()) continue;
+              const li = line.match(/^\s+-\s*(.+)$/);
+              if (li && k && list) { list.push(li[1].trim()); continue; }
+              const kv = line.match(/^(\w+):\s*(.*)$/);
+              if (kv) {
+                k = kv[1];
+                const v = kv[2].trim();
+                if (v === "") { list = []; out[k] = list; }
+                else { out[k] = v; list = null; }
+              }
+            }
+            return out;
+          }
+
+          function latestMtime(paths: string[]): string | null {
+            let latest: string | null = null;
+            for (const p of paths) {
+              if (!existsSync(p)) continue;
+              try {
+                const out = execSync(
+                  `git log -1 --format=%cI -- "${p}"`,
+                  { encoding: "utf8" }
+                ).trim();
+                if (out && (!latest || out > latest)) latest = out;
+              } catch {}
+            }
+            return latest;
+          }
+
+          const stale: Array<{ doc: string; verified: string; newest: string }> = [];
+          const files = await readdir("docs/agent").catch(() => []);
+          for (const f of files) {
+            if (!f.endsWith(".md")) continue;
+            const content = await readFile(`docs/agent/${f}`, "utf8");
+            const meta = fm(content);
+            const verified = meta.last_verified as string | undefined;
+            const deps = meta.dependent_paths as string[] | undefined;
+            if (!verified || !deps || deps.length === 0) continue;
+            const newest = latestMtime(deps);
+            if (newest && newest.slice(0, 10) > verified) {
+              stale.push({
+                doc: `docs/agent/${f}`,
+                verified,
+                newest: newest.slice(0, 10),
+              });
+            }
+          }
+          console.log(JSON.stringify(stale, null, 2));
+          EOF
+          bun run /tmp/staleness.ts > /tmp/stale.json
+          STALE_COUNT=$(cat /tmp/stale.json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          echo "count=$STALE_COUNT" >> $GITHUB_OUTPUT
+          cat /tmp/stale.json
+      - name: Upsert tracking issue
+        if: steps.check.outputs.count != '0' || steps.drift.outputs.warnings != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          STALE=$(cat /tmp/stale.json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          DRIFT=${{ steps.drift.outputs.warnings }}
+          TITLE="docs: weekly health — $STALE stale, $DRIFT drift"
+          {
+            echo "Automated weekly scan. Two signals:"
+            echo ""
+            echo "**Staleness** ($STALE): docs where linked source files were modified"
+            echo "more recently than the doc's \`last_verified\` date."
+            echo ""
+            echo '```json'
+            cat /tmp/stale.json
+            echo '```'
+            echo ""
+            echo "**Drift** ($DRIFT warnings): exported symbols in \`dependent_paths\`"
+            echo "source files that aren't mentioned in the doc. Low-confidence signal —"
+            echo "some are genuine gaps, some are internal helpers that legitimately don't"
+            echo "need doc coverage."
+            echo ""
+            echo '```json'
+            python3 -c "import json; d=json.load(open('/tmp/drift.json')); print(json.dumps(d['findings'], indent=2))"
+            echo '```'
+            echo ""
+            echo "Close this issue once docs are re-verified. The next weekly run will"
+            echo "re-open if signals remain."
+          } > /tmp/body.md
+          gh issue list --label doc-staleness --state open --json number --jq '.[].number' | xargs -I{} gh issue close {} --reason "not planned" 2>/dev/null || true
+          gh issue create --title "$TITLE" --body-file /tmp/body.md --label doc-staleness 2>/dev/null || \
+            gh issue create --title "$TITLE" --body-file /tmp/body.md
