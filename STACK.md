@@ -39,7 +39,7 @@ The core package contains pure business logic with no database dependencies. Dat
 | **Local Dev** | D1 (SQLite) or KV | `wrangler dev --persist-to` |
 | **Production** | D1, PlanetScale, or Supabase | Cloudflare bindings / Hyperdrive |
 
-For PlanetScale/external Postgres, use Hyperdrive for connection pooling:
+For PlanetScale/external Postgres, use Hyperdrive for connection pooling (Hyperdrive config: use port **6432**, not 5432 — see "Hyperdrive for Production" below).
 
 ```toml
 # wrangler.toml
@@ -715,6 +715,8 @@ cat sql/migrations/003_add_customer_status.sql | pscale shell my-db main --org m
 ### Hyperdrive for Production
 
 Connect PlanetScale to Cloudflare Workers via Hyperdrive:
+
+**Best practice:** When configuring the Hyperdrive connection to PlanetScale, use port **6432** (not 5432). Port 5432 can lead to connection issues as the app scales; 6432 is the recommended port for serverless/connection-pooled access.
 
 ```toml
 # wrangler.toml
