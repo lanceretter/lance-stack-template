@@ -36,10 +36,19 @@ dependent_paths:
   2. **Staleness signal**: weekly cron compares git mtime of these paths to `last_verified` and flags drift.
   3. **Symbol drift**: for `.ts` files, the drift scan extracts exported symbols and warns when they're not mentioned in the doc.
 
-### Rollup docs exempt from `dependent_paths`
+### Exemptions from `dependent_paths`
 
-Files starting with `_` (like `_TIMELINE.md`, `_GLOSSARY.md`) are roll-ups
-with no single code dependency. They can omit `dependent_paths`.
+Two ways a doc can legitimately have no code-dep tracking:
+
+1. **Rollup convention** — files starting with `_` (like `_TIMELINE.md`,
+   `_GLOSSARY.md`) are roll-ups with no single code dependency. They can
+   omit `dependent_paths` entirely.
+2. **Editorial opt-out** — set `dependent_paths: []` (or empty block).
+   For docs like `gotchas.md` or `architecture.md` overviews that
+   summarize cross-cutting patterns rather than tracking specific files.
+   The `last_verified` bump enforcement on PRs is skipped for these. Use
+   sparingly — most docs should have meaningful deps so the "re-read the
+   doc when covered code changes" signal actually fires.
 
 ## Body structure
 

@@ -94,7 +94,8 @@ function parseFrontMatter(content: string): Record<string, string | string[]> {
     if (kv) {
       currentKey = kv[1]!;
       const val = kv[2]!.trim();
-      if (val === "") {
+      if (val === "" || val === "[]") {
+        // Empty block value OR YAML flow-style empty list -> editorial opt-out
         currentList = [];
         fm[currentKey] = currentList;
       } else {
@@ -298,15 +299,21 @@ async function checkAgentDocs(opts: { symbolDrift: boolean }) {
     }
 
     // dependent_paths: each entry must exist on disk.
-    // Files starting with _ (like _TIMELINE.md) are exempt — they're roll-ups
-    // with no single source dependency.
+    // Exemptions (doc is "editorial" — no single code dep):
+    //   - Files starting with _ (like _TIMELINE.md, traditional rollups).
+    //   - Any doc with dependent_paths explicitly empty (`dependent_paths:`
+    //     with no items, or `dependent_paths: []`). Use this for editorial
+    //     docs like gotchas / architecture overviews that summarize
+    //     patterns rather than tracking specific files. Documented in
+    //     CONVENTIONS.md.
     const deps = fm.dependent_paths;
     const isRollup = entry.startsWith("_");
-    if (!isRollup) {
-      if (!Array.isArray(deps) || deps.length === 0) {
+    const isEditorialOptOut = Array.isArray(deps) && deps.length === 0;
+    if (!isRollup && !isEditorialOptOut) {
+      if (!Array.isArray(deps)) {
         warn(
           relPath,
-          `missing dependent_paths in front-matter (required for non-rollup docs)`
+          `missing dependent_paths in front-matter (required for non-rollup docs; use empty list for editorial opt-out)`
         );
       } else {
         for (const dep of deps) {
@@ -567,6 +574,7 @@ async function checkLastVerifiedBump(baseRef: string) {
     const content = await readFile(absDoc, "utf8");
     const fm = parseFrontMatter(content);
     const deps = fm.dependent_paths;
+    // Skip rollups (already filtered above) and editorial opt-outs (empty deps)
     if (!Array.isArray(deps) || deps.length === 0) continue;
 
     const touchedDeps = deps.filter((d) => depTouched(d));
