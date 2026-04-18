@@ -1,0 +1,23 @@
+name: Doc Coherence
+
+on:
+  pull_request:
+    paths:
+      - "AGENTS.md"
+      - "docs/agent/**"
+      - "apps/**"
+      - "packages/**"
+      - "migrations/**"
+      - "scripts/doc-check.ts"
+      - ".github/workflows/doc-check.yml"
+
+jobs:
+  doc-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Run doc coherence check
+        run: bun run scripts/doc-check.ts
