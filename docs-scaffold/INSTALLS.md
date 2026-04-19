@@ -11,9 +11,9 @@ reminder at the end of its run.
 
 | Repo | Default branch | Installed version | Notes |
 |---|---|---|---|
-| [conquest-solutions/conquest-hub](https://github.com/conquest-solutions/conquest-hub) | main | v1.3.2 | Primary proving ground — most template changes land here first. `ANTHROPIC_API_KEY` set. No `DOCS_SCAFFOLD_UPDATE_TOKEN` — workflow-touching auto-updates will surface `::error::` and need manual landing. |
-| [conquest-solutions/conquest-lpr](https://github.com/conquest-solutions/conquest-lpr) | main | v1.3.2 | `ANTHROPIC_API_KEY` set. No `DOCS_SCAFFOLD_UPDATE_TOKEN`. |
-| [trashtastic-hq/trashtastic-website-production](https://github.com/trashtastic-hq/trashtastic-website-production) | main | v1.3.2 | Local folder name: `trashtastic-website-beta`. No `ANTHROPIC_API_KEY` — needs `[skip docs]` PR title prefix or `skip-docs` label. No `DOCS_SCAFFOLD_UPDATE_TOKEN`. |
+| [conquest-solutions/conquest-hub](https://github.com/conquest-solutions/conquest-hub) | main | v1.4.0 | Primary proving ground. `ANTHROPIC_API_KEY` set. |
+| [conquest-solutions/conquest-lpr](https://github.com/conquest-solutions/conquest-lpr) | main | v1.4.0 | `ANTHROPIC_API_KEY` set. |
+| [trashtastic-hq/trashtastic-website-production](https://github.com/trashtastic-hq/trashtastic-website-production) | main | v1.4.0 | Local folder: `trashtastic-website-beta`. No `ANTHROPIC_API_KEY` — `sync-consumers.sh` auto-prefixes `[skip docs]` on this repo's PRs. |
 
 ## How updates propagate
 
