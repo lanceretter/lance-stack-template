@@ -7,7 +7,7 @@ Adapted from Garry Tan's gbrain pattern (`skills/RESOLVER.md` — thin router,
 fat focused files, self-maintaining) and applied to team project docs instead
 of personal memory.
 
-**What you get (v1.3.0):**
+**What you get (v1.3.1):**
 
 Three doc surfaces, all gated, plus an AI auto-maintainer:
 
@@ -120,9 +120,12 @@ up to 20 devs before the assumptions start to creak.
 
 ## Version
 
-Current: **v1.3.0** (2026-04-19 — weekly self-update cron).
+Current: **v1.3.1** (2026-04-19 — actions/checkout@v5 + setup-node@v5).
 
 History:
+- **v1.3.1** (2026-04-19) — bump `actions/checkout@v4→v5` and
+  `actions/setup-node@v4→v5` to silence Node 20 deprecation warnings.
+  No migration; auto-update handles it.
 - **v1.3.0** (2026-04-19) — self-updating via weekly cron
   (`docs-scaffold-update.yml`). Each consumer repo runs the workflow
   weekly, compares its `.docs-scaffold-version` against upstream, and

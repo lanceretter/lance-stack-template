@@ -61,6 +61,24 @@ Version bumps follow semver:
 
 ## Versions
 
+### v1.3.1 (2026-04-19)
+
+Patch release. **Backwards compatible** — auto-update from v1.3.0 is safe.
+
+- **Bump `actions/checkout@v4` → `@v5`** in all four workflows
+  (`doc-check.yml`, `doc-staleness.yml`, `doc-auto-update.yml`,
+  `docs-scaffold-update.yml`). Silences the "Node.js 20 actions are
+  deprecated" annotation GitHub started emitting. Node 24 becomes the
+  default on runners on June 2, 2026.
+- **Bump `actions/setup-node@v4` → `@v5`** in `doc-auto-update.yml`. Same
+  reason.
+- Also serves as the first live exercise of the v1.3.0 self-update
+  workflow path — the PR that lands v1.3.1 in each consumer is opened by
+  `docs-scaffold-update.yml` rather than a human.
+
+No migration steps. If you're running v1.3.0, the cron opens a PR on the
+next Monday firing (or you can trigger it manually from the Actions tab).
+
 ### v1.3.0 (2026-04-19)
 
 Self-updating via weekly cron + install registry. **Backwards compatible** —

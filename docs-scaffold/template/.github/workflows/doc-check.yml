@@ -30,7 +30,7 @@ jobs:
   doc-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Full history so `git diff` and `git show $base:path` can resolve
           # the PR base during the last_verified-bump enforcement check.
