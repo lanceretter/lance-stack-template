@@ -1,0 +1,124 @@
+name: docs-scaffold update check
+
+# Weekly cron that checks if upstream docs-scaffold has a newer version than
+# what's installed here (.docs-scaffold-version). If so, runs update.sh and
+# opens a PR with the tooling changes.
+#
+# Source: https://github.com/lanceretter/lance-stack-template/tree/main/docs-scaffold
+#
+# Update the cron schedule below if you want a different cadence. Default is
+# Monday 14:00 UTC (10am ET / 7am PT).
+#
+# Auth: uses the default GITHUB_TOKEN. PRs opened by GITHUB_TOKEN do NOT
+# trigger downstream workflows (doc-check.yml won't run on the auto-PR).
+# That's fine because update.sh only touches tooling files. If you want CI
+# on the auto-PR, create a PAT with `repo` scope and save it as the
+# DOCS_SCAFFOLD_UPDATE_TOKEN secret — the workflow picks it up automatically.
+
+on:
+  schedule:
+    - cron: '0 14 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read local version
+        id: local
+        run: |
+          if [ -f .docs-scaffold-version ]; then
+            version=$(tr -d '[:space:]' < .docs-scaffold-version)
+          else
+            version="0.0.0"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Local version: $version"
+
+      - name: Read upstream version
+        id: upstream
+        run: |
+          version=$(curl -fsSL https://raw.githubusercontent.com/lanceretter/lance-stack-template/main/docs-scaffold/template/.docs-scaffold-version | tr -d '[:space:]')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Upstream version: $version"
+
+      - name: Compare
+        id: compare
+        run: |
+          if [ "${{ steps.local.outputs.version }}" = "${{ steps.upstream.outputs.version }}" ]; then
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+            echo "Already at latest — nothing to do."
+          else
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            echo "Update available: ${{ steps.local.outputs.version }} -> ${{ steps.upstream.outputs.version }}"
+          fi
+
+      - name: Run update.sh
+        if: steps.compare.outputs.needs_update == 'true'
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/lanceretter/lance-stack-template/main/docs-scaffold/update.sh | bash
+
+      - name: Detect default branch
+        if: steps.compare.outputs.needs_update == 'true'
+        id: default_branch
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_SCAFFOLD_UPDATE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          branch=$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name)
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+          echo "Default branch: $branch"
+
+      - name: Open PR
+        if: steps.compare.outputs.needs_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_SCAFFOLD_UPDATE_TOKEN || secrets.GITHUB_TOKEN }}
+          LOCAL_VERSION: ${{ steps.local.outputs.version }}
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+          BASE_BRANCH: ${{ steps.default_branch.outputs.name }}
+        run: |
+          git config user.name "docs-scaffold-bot"
+          git config user.email "docs-scaffold-bot@users.noreply.github.com"
+
+          branch="docs-scaffold/auto-update-${UPSTREAM_VERSION}"
+
+          # If a branch for this version already exists on the remote, skip —
+          # an earlier run already opened the PR.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Branch $branch already exists on remote — PR likely already open. Skipping."
+            exit 0
+          fi
+
+          git checkout -b "$branch"
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "update.sh made no changes — nothing to PR."
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "chore: update docs-scaffold to v${UPSTREAM_VERSION}"
+          git push origin "$branch"
+
+          gh pr create \
+            --base "$BASE_BRANCH" \
+            --head "$branch" \
+            --title "chore: update docs-scaffold to v${UPSTREAM_VERSION}" \
+            --body "$(cat <<EOF
+          Automated update by \`.github/workflows/docs-scaffold-update.yml\`.
+
+          - **Local:** v${LOCAL_VERSION}
+          - **Upstream:** v${UPSTREAM_VERSION}
+
+          This PR replaces tooling files only (\`scripts/doc-check.ts\`, \`.github/workflows/doc-*.yml\`, \`.github/pull_request_template.md\`, \`.docs-scaffold-version\`). Project-specific docs are untouched.
+
+          Review the diff and the [UPDATE.md changelog](https://github.com/lanceretter/lance-stack-template/blob/main/docs-scaffold/UPDATE.md) before merging — especially for MAJOR version bumps.
+
+          > **Note:** Because this PR is opened by the built-in \`GITHUB_TOKEN\`, \`doc-check.yml\` will not run on it. After merge, CI will run normally on the subsequent push to the base branch.
+          EOF
+          )"

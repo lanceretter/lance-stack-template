@@ -7,7 +7,7 @@ Adapted from Garry Tan's gbrain pattern (`skills/RESOLVER.md` — thin router,
 fat focused files, self-maintaining) and applied to team project docs instead
 of personal memory.
 
-**What you get (v1.2.0):**
+**What you get (v1.3.0):**
 
 Three doc surfaces, all gated, plus an AI auto-maintainer:
 
@@ -99,6 +99,7 @@ for your project.
 | [`CONVENTIONS.md`](./CONVENTIONS.md) | Front-matter format, Workflow sections, Timeline pattern |
 | [`UPDATE.md`](./UPDATE.md) | How to pull updates to `doc-check.ts` / workflows into existing installs |
 | [`install.sh`](./install.sh) | One-liner installer (clones or curls this repo, copies files in) |
+| [`INSTALLS.md`](./INSTALLS.md) | Registry of known consumer repos — update when installing into a new repo |
 | [`template/`](./template/) | The actual files to drop into your repo |
 | [`examples/`](./examples/) | Real-world usage from `conquest-hub` |
 
@@ -119,9 +120,17 @@ up to 20 devs before the assumptions start to creak.
 
 ## Version
 
-Current: **v1.2.0** (2026-04-19 — AI auto-update on merge).
+Current: **v1.3.0** (2026-04-19 — weekly self-update cron).
 
 History:
+- **v1.3.0** (2026-04-19) — self-updating via weekly cron
+  (`docs-scaffold-update.yml`). Each consumer repo runs the workflow
+  weekly, compares its `.docs-scaffold-version` against upstream, and
+  opens a PR if a new release is available. Uses `GITHUB_TOKEN` — no
+  PAT or secret required for the default path. Also fixes a v1.2.0
+  oversight: `install.sh` now copies `doc-auto-update.yml`, and
+  `update.sh` now updates it. New: upstream `INSTALLS.md` registry
+  tracks which consumer repos have the scaffold installed.
 - **v1.2.0** (2026-04-19) — post-merge AI auto-documentation workflow
   (`doc-auto-update.yml`). Runs Claude Code headless after every PR
   merge, has it prepend Timeline entries, bump `last_verified` on

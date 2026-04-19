@@ -108,8 +108,26 @@ gaps are hints for doc improvements.
 
 ## Commit
 
-Open a PR titled "chore: install docs-scaffold v1.0.0". After merge, the CI
-gate runs on every subsequent PR automatically.
+Open a PR titled "chore: install docs-scaffold". After merge, the CI gate
+runs on every subsequent PR automatically.
+
+## Register the install
+
+Add a row for your repo in the upstream
+[`docs-scaffold/INSTALLS.md`](https://github.com/lanceretter/lance-stack-template/blob/main/docs-scaffold/INSTALLS.md)
+so the maintainer knows which repos to verify against when the template
+evolves. `install.sh` prints a reminder at the end of its run.
+
+## Self-updating via weekly cron
+
+The template ships with `.github/workflows/docs-scaffold-update.yml`. It
+runs every Monday at 14:00 UTC, checks the upstream
+`.docs-scaffold-version`, and opens a PR to this repo if there's a newer
+release — running `update.sh` for you. Review the PR and merge when you're
+happy; project-specific docs are never touched.
+
+Disable it by deleting the file. Run it on demand from the Actions tab
+(`workflow_dispatch`).
 
 ## Next sessions
 

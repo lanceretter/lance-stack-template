@@ -61,6 +61,42 @@ Version bumps follow semver:
 
 ## Versions
 
+### v1.3.0 (2026-04-19)
+
+Self-updating via weekly cron + install registry. **Backwards compatible** —
+existing v1.2.0 consumers can auto-update.
+
+- **New file: `.github/workflows/docs-scaffold-update.yml`.** Runs every
+  Monday at 14:00 UTC (and on demand). Reads local `.docs-scaffold-version`,
+  compares against upstream, and if they differ, runs `update.sh` and opens
+  a PR titled `chore: update docs-scaffold to vX.Y.Z`. Uses the built-in
+  `GITHUB_TOKEN` — no PAT or secret needed. Dedup: if a branch already
+  exists for the target version, the workflow skips opening a duplicate.
+- **`install.sh` now copies `doc-auto-update.yml`** (oversight from v1.2.0 —
+  previously you had to copy it by hand). Fresh installs at v1.3.0 get all
+  four workflows automatically.
+- **`update.sh` now updates `doc-auto-update.yml`** as well (same oversight —
+  previously its updates were silently skipped on existing installs).
+- **New file: `docs-scaffold/INSTALLS.md`** (upstream only, not in template).
+  Manual registry of known consumer repos. `install.sh` prints a reminder
+  at the end to add your repo there.
+
+**Known limitation.** PRs opened by the default `GITHUB_TOKEN` don't trigger
+other workflows, so `doc-check.yml` won't run on the auto-update PR itself.
+After merge, `doc-check.yml` runs on the push to main as normal. This is
+fine because `update.sh` only touches tooling files. If you want CI on the
+auto-PR, switch to a PAT (stored as `DOCS_SCAFFOLD_UPDATE_TOKEN` secret) —
+workflow accepts that override, see the commented block inside the file.
+
+Migration (v1.2.0 → v1.3.0):
+1. Run the update script: `curl -fsSL https://raw.githubusercontent.com/lanceretter/lance-stack-template/main/docs-scaffold/update.sh | bash`
+2. Commit the new `.github/workflows/docs-scaffold-update.yml` and bumped
+   `.docs-scaffold-version`.
+3. Next Monday at 14:00 UTC, the workflow runs and will find you're
+   already current — no action. First real use is when v1.4.0 ships.
+4. To test immediately: Actions tab → "docs-scaffold update check" →
+   "Run workflow" (only works after a future version is pushed upstream).
+
 ### v1.2.0 (2026-04-19)
 
 Post-merge AI auto-documentation. **Backwards compatible** —

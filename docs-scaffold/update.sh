@@ -47,6 +47,8 @@ update_file "scripts/doc-check.ts"
 update_file ".github/pull_request_template.md"
 update_file ".github/workflows/doc-check.yml"
 update_file ".github/workflows/doc-staleness.yml"
+update_file ".github/workflows/doc-auto-update.yml"
+update_file ".github/workflows/docs-scaffold-update.yml"
 update_file ".docs-scaffold-version"
 
 echo
