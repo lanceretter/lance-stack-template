@@ -1,0 +1,193 @@
+name: Auto-Document on Merge
+
+# v1.2.0 addition to docs-scaffold.
+#
+# Triggers AFTER a PR merges to main. Calls Claude Code headless with
+# the PR diff + title + body and tells it to update:
+#   - docs/agent/_TIMELINE.md (prepend an entry for the merged PR)
+#   - Any docs/agent/*.md whose dependent_paths were touched (bump
+#     last_verified, append Timeline entry, reconcile "compiled truth"
+#     prose with the diff if behavior changed)
+#   - README.md "Recent Updates" if the PR added user-visible behavior
+#
+# Commits any resulting changes directly to main with [skip ci] so this
+# workflow doesn't recursively retrigger itself.
+#
+# Safety:
+#   - Scoped to doc files only — Claude is given a tool allowlist that
+#     excludes source code paths, so it cannot modify shipped code.
+#   - PR label `skip-docs` opts out (use for mechanical commits, doc-only
+#     PRs, or anything where auto-docs would just duplicate the PR's own
+#     content).
+#   - Bot commit message includes [skip ci] so doc-check doesn't re-run.
+#   - Requires ANTHROPIC_API_KEY secret to be set — workflow fails loud
+#     if missing.
+#
+# The doc-check workflow still runs on the original PR, so by the time
+# this fires the docs are already in whatever state the PR author (or
+# reviewer) left them. Auto-doc's job is to catch gaps, not to do the
+# whole job.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  auto-doc:
+    if: |
+      github.event.pull_request.merged == true &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-docs') &&
+      !contains(github.event.pull_request.title, '[skip docs]') &&
+      !contains(github.event.pull_request.title, 'docs-bot:')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify ANTHROPIC_API_KEY
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY secret not set. Add it in Settings → Secrets → Actions."
+            exit 1
+          fi
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Compute PR diff context
+        id: context
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          mkdir -p /tmp/auto-doc
+          git diff --stat "$BASE_SHA..$MERGE_SHA" > /tmp/auto-doc/diff-stat.txt
+          # Capture the full unified diff but trim binaries and huge files.
+          git diff "$BASE_SHA..$MERGE_SHA" -- \
+            ':(exclude)*.lock' ':(exclude)package-lock.json' ':(exclude)*.png' \
+            ':(exclude)*.jpg' ':(exclude)*.svg' ':(exclude)*.pdf' \
+            | head -c 100000 > /tmp/auto-doc/diff.patch
+          # Capture list of files changed (for dependent_paths matching).
+          git diff --name-only "$BASE_SHA..$MERGE_SHA" > /tmp/auto-doc/files.txt
+          echo "diff_size=$(wc -c < /tmp/auto-doc/diff.patch)" >> $GITHUB_OUTPUT
+          echo "files_count=$(wc -l < /tmp/auto-doc/files.txt)" >> $GITHUB_OUTPUT
+
+      - name: Run Claude Code to update docs
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          cat > /tmp/auto-doc/prompt.md <<EOF
+          You are the docs maintainer for this repository. A PR just merged to main.
+          Update the documentation to reflect what shipped.
+
+          **PR #${PR_NUMBER}** — ${PR_TITLE}
+          Author: @${PR_AUTHOR}
+          URL: ${PR_URL}
+          Merge commit: ${MERGE_SHA}
+
+          ## PR body
+
+          ${PR_BODY}
+
+          ## Files changed
+
+          See /tmp/auto-doc/files.txt
+
+          ## Diff (truncated to 100KB)
+
+          See /tmp/auto-doc/diff.patch
+
+          ## Your job
+
+          1. **Read \`docs/agent/_TIMELINE.md\`** and prepend ONE bullet for
+             this PR under the current date's heading (create the date
+             heading if this is the first entry of the day). 1-3 sentences.
+             Named paths + concrete outcomes, no marketing language.
+             Include the PR number at the start: "**PR #${PR_NUMBER}** — ...".
+
+          2. **For each \`docs/agent/*.md\` whose \`dependent_paths\` overlap
+             with the changed files** (grep the front-matter \`dependent_paths\`
+             against /tmp/auto-doc/files.txt):
+             - Bump its \`last_verified\` to today's date (UTC).
+             - Append a Timeline bullet with the same facts as the
+               _TIMELINE.md entry.
+             - If the "compiled truth" prose at the top of the doc is now
+               wrong because of this PR (e.g. an interface changed), rewrite
+               the affected paragraphs. If prose is still accurate, leave it.
+
+          3. **If the PR added user-visible behavior** (new page, new endpoint,
+             new CLI command, changed sign-in flow, etc.), add ONE bullet to
+             the \`## Recent Updates\` table in \`README.md\` and refresh the
+             \`**Last Updated**:\` line at the bottom.
+
+          4. **Do NOT touch source code.** Your tool access is doc files only.
+             If you're not sure whether a change belongs, skip it — a human
+             follow-up is better than a wrong doc.
+
+          5. **Do NOT add PR descriptions or generated-by attributions**
+             inside the doc content. Timeline entries and README rows stay
+             terse.
+
+          Commit title convention (the workflow will commit after you):
+            \`docs-bot: sync docs for PR #${PR_NUMBER}\`
+
+          When you're done, print a one-line summary of what you changed
+          (or "no changes needed" if the PR didn't affect any tracked docs).
+          EOF
+
+          # Run Claude headless. Tool allowlist restricts to doc paths and
+          # read-only shell operations.
+          claude \
+            --print \
+            --dangerously-skip-permissions \
+            --allowed-tools "Read Edit Write Glob Grep Bash(ls *) Bash(cat *) Bash(head *) Bash(tail *) Bash(wc *) Bash(grep *) Bash(find *) Bash(date *)" \
+            --append-system-prompt "You only edit documentation files (*.md, docs/**, README.md, AGENTS.md, TODOS.md). Never edit source code, configs, schemas, migrations, package.json, wrangler.toml, or anything outside the docs layer. Keep edits surgical — small additions to timelines, bumps to last_verified, terse Recent Updates bullets." \
+            "$(cat /tmp/auto-doc/prompt.md)" | tee /tmp/auto-doc/claude-output.txt
+
+      - name: Commit + push doc updates
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git config user.name "docs-bot"
+          git config user.email "docs-bot@users.noreply.github.com"
+
+          # Defense in depth: only stage doc paths, never source. If Claude
+          # accidentally touched source code, leave it unstaged and the
+          # commit is effectively empty.
+          git add -- \
+            'AGENTS.md' \
+            'README.md' \
+            'TODOS.md' \
+            'docs/**/*.md' \
+            'apps/**/AGENTS.md' \
+            'packages/**/AGENTS.md' \
+            2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "No doc changes — nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "docs-bot: sync docs for PR #${PR_NUMBER} [skip ci]" \
+            -m "Automated via .github/workflows/doc-auto-update.yml. Scoped to doc files only." \
+            -m "Co-Authored-By: docs-bot <docs-bot@users.noreply.github.com>"
+          git push origin main

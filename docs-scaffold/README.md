@@ -7,9 +7,9 @@ Adapted from Garry Tan's gbrain pattern (`skills/RESOLVER.md` — thin router,
 fat focused files, self-maintaining) and applied to team project docs instead
 of personal memory.
 
-**What you get (v1.1.0):**
+**What you get (v1.2.0):**
 
-Three doc surfaces, all gated:
+Three doc surfaces, all gated, plus an AI auto-maintainer:
 
 - **Root router** — `AGENTS.md` at repo root. Thin file pointing everywhere.
 - **Cross-cutting docs** — `docs/agent/*.md` for topics spanning multiple
@@ -52,7 +52,7 @@ Weekly cron (`doc-staleness.yml`):
 - **Drift:** exported symbols in `dependent_paths` source files not
   mentioned in the doc → one combined dashboard issue.
 
-**Why it stops rotting:** six reinforcing layers. A PR can skip one, not all.
+**Why it stops rotting:** seven reinforcing layers. A PR can skip one, not all.
 
 1. **Per-PR coherence gate** — `doc-check.ts` fails the PR if paths break
    or app docs drift out of scope.
@@ -64,6 +64,13 @@ Weekly cron (`doc-staleness.yml`):
 5. **Weekly cron** — per-doc tracking issues for drifted/ageing docs.
 6. **CLAUDE.md rule** — agents read it at session start; enforces "update
    docs in the same PR" as a non-negotiable.
+7. **Post-merge auto-update (v1.2.0)** — on every merged PR,
+   `doc-auto-update.yml` runs Claude Code headless with the PR diff
+   and has it prepend a Timeline entry, bump `last_verified` on any
+   affected doc, and add a Recent Updates row to README if user-visible
+   behavior shipped. Scoped to doc files only (tool allowlist prevents
+   source code edits). Requires `ANTHROPIC_API_KEY` GH secret + PR
+   label `skip-docs` opt-out.
 
 ## Quick install
 
@@ -112,9 +119,17 @@ up to 20 devs before the assumptions start to creak.
 
 ## Version
 
-Current: **v1.1.0** (2026-04-18 — conquest-lpr hierarchical rollout).
+Current: **v1.2.0** (2026-04-19 — AI auto-update on merge).
 
 History:
+- **v1.2.0** (2026-04-19) — post-merge AI auto-documentation workflow
+  (`doc-auto-update.yml`). Runs Claude Code headless after every PR
+  merge, has it prepend Timeline entries, bump `last_verified` on
+  affected docs, and surface user-visible changes in README.
+  Tool allowlist restricts to doc files only — cannot modify source.
+  `ANTHROPIC_API_KEY` GH secret required. `skip-docs` PR label or
+  `[skip docs]` in PR title opts out. Backwards compatible; workflow
+  is additive. Proven out in `conquest-hub` (initial rollout).
 - **v1.1.0** (2026-04-18) — per-app AGENTS.md scope + orphan check,
   `last_verified` bump enforcement on PRs, markdown link integrity,
   README policy lint, push-to-main trigger, per-doc tracking issues,

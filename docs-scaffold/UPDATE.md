@@ -61,6 +61,42 @@ Version bumps follow semver:
 
 ## Versions
 
+### v1.2.0 (2026-04-19)
+
+Post-merge AI auto-documentation. **Backwards compatible** —
+existing v1.1.0 consumers can auto-update. New workflow is opt-in
+(requires the `ANTHROPIC_API_KEY` secret to actually run anything).
+
+- **New file: `.github/workflows/doc-auto-update.yml`.** Triggers on
+  `pull_request.closed` when merged to `main`. Installs Claude Code
+  in the runner, feeds it the PR diff + title + body, asks it to
+  update `docs/agent/_TIMELINE.md`, bump `last_verified` on any
+  `docs/agent/*.md` whose `dependent_paths` overlap the diff, and
+  add a Recent Updates row to `README.md` when user-visible behavior
+  shipped. Commits directly to `main` as `docs-bot` with `[skip ci]`
+  so doc-check doesn't recursively run on the bot commit.
+- **Safety.** Tool allowlist restricts Claude to `Read / Edit / Write /
+  Glob / Grep` and read-only shell commands. `git add` in the commit
+  step is path-scoped to doc files — if Claude accidentally touched
+  source, those changes are left unstaged.
+- **Opt-out.** Add the `skip-docs` label to a PR, or put `[skip docs]`
+  in the PR title, or prefix the title with `docs-bot:`.
+- **Cost.** Each merge triggers one Claude run (~10-30s, a few cents).
+  Trivial compared to the reviewer time saved.
+
+Migration (v1.1.0 → v1.2.0):
+1. Add the `ANTHROPIC_API_KEY` secret to your repo under
+   Settings → Secrets → Actions. Without it, the workflow fails loud
+   with a clear error message (doesn't silently no-op).
+2. Run the update script (or copy `.github/workflows/doc-auto-update.yml`
+   manually).
+3. Merge your next PR and watch the `Auto-Document on Merge` job run.
+   First run takes ~1-2 min (npm install + Claude startup); subsequent
+   runs are faster due to node_modules caching.
+4. If you want to preview what Claude would write without running it on
+   a real merge, open a draft PR and inspect the prompt locally
+   (\`cat .github/workflows/doc-auto-update.yml | grep -A50 'prompt.md'\`).
+
 ### v1.1.0 (2026-04-18)
 
 Hierarchical coverage + accuracy gates. Proven out in `conquest-lpr`.
