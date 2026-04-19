@@ -34,7 +34,7 @@ fi
 
 # Collision check
 COLLISIONS=()
-for f in AGENTS.md CLAUDE.md scripts/doc-check.ts .github/pull_request_template.md .github/workflows/doc-check.yml .github/workflows/doc-staleness.yml .github/workflows/doc-auto-update.yml .github/workflows/docs-scaffold-update.yml; do
+for f in AGENTS.md CLAUDE.md scripts/doc-check.ts .github/pull_request_template.md .github/workflows/doc-check.yml .github/workflows/doc-staleness.yml .github/workflows/doc-auto-update.yml; do
   if [[ -f "$f" ]]; then
     COLLISIONS+=("$f")
   fi
@@ -73,7 +73,6 @@ copy_file ".github/pull_request_template.md"
 copy_file ".github/workflows/doc-check.yml"
 copy_file ".github/workflows/doc-staleness.yml"
 copy_file ".github/workflows/doc-auto-update.yml"
-copy_file ".github/workflows/docs-scaffold-update.yml"
 copy_file "docs/agent/architecture.md"
 copy_file "docs/agent/database.md"
 copy_file "docs/agent/deployment.md"
@@ -91,11 +90,12 @@ echo "  4. Run: bun run scripts/doc-check.ts"
 echo "     (If bun isn't installed: curl -fsSL https://bun.sh/install | bash)"
 echo "  5. Commit: git add . && git commit -m 'chore: install docs-scaffold'"
 echo
-echo "Weekly self-update:"
-echo "  .github/workflows/docs-scaffold-update.yml runs each Monday and opens a"
-echo "  PR when upstream has a new version. No action needed — just review + merge."
+echo "Staying up to date:"
+echo "  Lance runs $REPO_URL/blob/main/docs-scaffold/sync-consumers.sh"
+echo "  after each release. It opens a PR in every registered consumer."
 echo
-echo "*** Don't forget *** — add this repo to INSTALLS.md upstream:"
+echo "*** Don't forget *** — add this repo to INSTALLS.md + sync-consumers.sh"
+echo "  so it gets rolled future releases:"
 echo "  $REPO_URL/blob/main/docs-scaffold/INSTALLS.md"
 echo
 echo "Full install + customize guide: $REPO_URL/tree/main/docs-scaffold/INSTALL.md"

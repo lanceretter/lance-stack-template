@@ -17,13 +17,17 @@ reminder at the end of its run.
 
 ## How updates propagate
 
-Each consumer runs `.github/workflows/docs-scaffold-update.yml` weekly (Monday
-14:00 UTC). That workflow compares the consumer's `.docs-scaffold-version`
-against upstream and opens a PR if there's a newer release. The maintainer
-reviews + merges.
+After each docs-scaffold release, the maintainer runs
+[`sync-consumers.sh`](./sync-consumers.sh) locally. It loops through the
+repos listed above, runs `update.sh` in each, and opens a PR per repo.
+Consumers review and merge normally — no cron, no secrets, no PATs.
 
-See [`UPDATE.md`](./UPDATE.md) for manual update commands when you need to
-pull a new version faster than the cron.
+**When you add a new consumer**, update two places:
+1. Add a row to the registry above.
+2. Add the local clone path to the `REPOS=(...)` list in `sync-consumers.sh`.
+
+See [`UPDATE.md`](./UPDATE.md) for the ad-hoc manual update command if a
+consumer needs to catch up between syncs.
 
 ## Verifying the registry is accurate
 

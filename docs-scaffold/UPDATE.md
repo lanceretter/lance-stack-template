@@ -61,6 +61,42 @@ Version bumps follow semver:
 
 ## Versions
 
+### v1.4.0 (2026-04-19)
+
+**Distribution model change.** Drops the in-consumer weekly cron in favor
+of a single script the maintainer runs after each release. Simpler, no
+PAT management, no GitHub Actions quirks with workflow-file modification.
+
+- **Removed:** `template/.github/workflows/docs-scaffold-update.yml`. The
+  weekly cron that tried to push updates from within each consumer repo.
+  Hit an unavoidable GitHub restriction: the default `GITHUB_TOKEN`
+  cannot modify files under `.github/workflows/*.yml`, and most
+  docs-scaffold releases touch those files. Adding a PAT per consumer
+  was more setup friction than the automation saved.
+- **Added:** `docs-scaffold/sync-consumers.sh`. Lives in the upstream
+  repo. Reads a hardcoded list of consumer paths, runs `update.sh` in
+  each, commits only scaffold-owned files, pushes a branch, opens a PR.
+  Maintainer runs it once after each release. Requires `gh` CLI
+  authenticated with push access.
+- **`install.sh` and `update.sh`** no longer copy/fetch
+  `docs-scaffold-update.yml`. Any orphan copy on disk gets deleted by
+  `sync-consumers.sh` on next sync (fine to leave — it's inert).
+
+Migration (v1.3.x → v1.4.0):
+1. Maintainer clones lance-stack-template locally.
+2. Edit `docs-scaffold/sync-consumers.sh` `REPOS=(...)` if the consumer
+   paths differ on your machine.
+3. Run the script. It opens 3 PRs (one per consumer) that bump
+   `.docs-scaffold-version`, refresh the tooling, and delete the orphan
+   `.github/workflows/docs-scaffold-update.yml`.
+4. Review + merge.
+5. Consumers never run docs-scaffold's update cron again. The
+   `doc-check.yml`, `doc-staleness.yml`, and `doc-auto-update.yml`
+   workflows — which do real work — stay.
+
+No consumer-side configuration required. No PAT, no secrets, no
+scheduled workflow to maintain per repo.
+
 ### v1.3.2 (2026-04-19)
 
 Patch release — surfaces GitHub's workflow-file push restriction clearly.

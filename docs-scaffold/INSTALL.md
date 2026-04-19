@@ -115,19 +115,16 @@ runs on every subsequent PR automatically.
 
 Add a row for your repo in the upstream
 [`docs-scaffold/INSTALLS.md`](https://github.com/lanceretter/lance-stack-template/blob/main/docs-scaffold/INSTALLS.md)
-so the maintainer knows which repos to verify against when the template
-evolves. `install.sh` prints a reminder at the end of its run.
+**and** the `REPOS=(...)` list in
+[`sync-consumers.sh`](https://github.com/lanceretter/lance-stack-template/blob/main/docs-scaffold/sync-consumers.sh)
+so the maintainer rolls future releases to you. `install.sh` prints a
+reminder at the end of its run.
 
-## Self-updating via weekly cron
+## How updates reach you
 
-The template ships with `.github/workflows/docs-scaffold-update.yml`. It
-runs every Monday at 14:00 UTC, checks the upstream
-`.docs-scaffold-version`, and opens a PR to this repo if there's a newer
-release — running `update.sh` for you. Review the PR and merge when you're
-happy; project-specific docs are never touched.
-
-Disable it by deleting the file. Run it on demand from the Actions tab
-(`workflow_dispatch`).
+The maintainer runs `sync-consumers.sh` after each release. It opens a
+PR in your repo bumping the tooling; you review and merge. No cron
+inside your repo, no secrets to configure.
 
 ## Next sessions
 
