@@ -7,7 +7,7 @@ Adapted from Garry Tan's gbrain pattern (`skills/RESOLVER.md` — thin router,
 fat focused files, self-maintaining) and applied to team project docs instead
 of personal memory.
 
-**What you get (v1.3.1):**
+**What you get (v1.3.2):**
 
 Three doc surfaces, all gated, plus an AI auto-maintainer:
 
@@ -120,9 +120,16 @@ up to 20 devs before the assumptions start to creak.
 
 ## Version
 
-Current: **v1.3.1** (2026-04-19 — actions/checkout@v5 + setup-node@v5).
+Current: **v1.3.2** (2026-04-19 — clear PAT-required error on workflow pushes).
 
 History:
+- **v1.3.2** (2026-04-19) — auto-update workflow now emits a clear
+  `::error::` annotation when it can't push a release because the
+  release touches `.github/workflows/*.yml` (GitHub blocks the default
+  `GITHUB_TOKEN` from modifying workflow files). Surfaces the
+  `DOCS_SCAFFOLD_UPDATE_TOKEN` PAT requirement instead of burying the
+  git push failure in logs. Also bundles v1.3.1 (checkout@v5 +
+  setup-node@v5).
 - **v1.3.1** (2026-04-19) — bump `actions/checkout@v4→v5` and
   `actions/setup-node@v4→v5` to silence Node 20 deprecation warnings.
   No migration; auto-update handles it.

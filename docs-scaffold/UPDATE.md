@@ -61,6 +61,37 @@ Version bumps follow semver:
 
 ## Versions
 
+### v1.3.2 (2026-04-19)
+
+Patch release — surfaces GitHub's workflow-file push restriction clearly.
+**Backwards compatible**.
+
+- **Clear error on push-blocked updates.** When a release touches files
+  under `.github/workflows/`, the default `GITHUB_TOKEN` is not allowed to
+  push them (GitHub security policy — no permission block can unlock it).
+  Previously, `docs-scaffold-update.yml` failed with GitHub's raw
+  "refusing to allow a GitHub App to create or update workflow" message
+  buried in the job log. Now the step detects that specific failure and
+  prints a `::error::` annotation with remediation steps:
+  - Set `DOCS_SCAFFOLD_UPDATE_TOKEN` PAT (classic `workflow` scope or
+    fine-grained `Actions: write`), OR
+  - Run `update.sh` manually on a dev machine.
+- Bundles the v1.3.1 `actions/checkout@v5` + `actions/setup-node@v5`
+  bumps.
+
+**Operational note.** For auto-update to work end-to-end across releases
+that touch workflow files, `DOCS_SCAFFOLD_UPDATE_TOKEN` needs to be set
+in each consumer repo. Without it, the cron works for non-workflow
+releases (script, PR template, version-file-only bumps) and fails loud
+on workflow releases. No `ANTHROPIC_API_KEY`-style silent-no-op — the
+workflow fails visibly so you know a manual update is needed.
+
+Migration (v1.3.0 → v1.3.2):
+1. Run `update.sh` manually once to get past this specific release
+   (the auto-update cron can't land it without the PAT).
+2. Optionally create + set `DOCS_SCAFFOLD_UPDATE_TOKEN` for
+   full coverage of future workflow-touching releases.
+
 ### v1.3.1 (2026-04-19)
 
 Patch release. **Backwards compatible** — auto-update from v1.3.0 is safe.

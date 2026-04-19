@@ -103,7 +103,33 @@ jobs:
 
           git add -A
           git commit -m "chore: update docs-scaffold to v${UPSTREAM_VERSION}"
-          git push origin "$branch"
+
+          # Push can fail if the update touches .github/workflows/*.yml and
+          # the job is using the default GITHUB_TOKEN (GitHub blocks workflow
+          # file changes from non-workflow-scoped tokens). Detect that case
+          # and print actionable guidance.
+          if git push origin "$branch" 2>&1 | tee /tmp/push.log; then
+            echo "Push succeeded."
+          else
+            if grep -q "workflows.*permission" /tmp/push.log; then
+              cat <<'MSG' >&2
+
+          ::error::Push blocked: this upstream release touches files under .github/workflows/, which the default GITHUB_TOKEN is not allowed to modify.
+
+          To enable full auto-update, set a PAT as the DOCS_SCAFFOLD_UPDATE_TOKEN secret:
+            - Classic PAT: 'workflow' scope
+            - Fine-grained PAT: "Actions: Read and write" permission on this repo
+          Then Settings -> Secrets and variables -> Actions -> New repository secret.
+
+          Alternatively, run update.sh manually from your dev machine:
+            curl -fsSL https://raw.githubusercontent.com/lanceretter/lance-stack-template/main/docs-scaffold/update.sh | bash
+
+          MSG
+              exit 1
+            fi
+            echo "::error::git push failed (non-workflow-permission reason). See log above."
+            exit 1
+          fi
 
           gh pr create \
             --base "$BASE_BRANCH" \
