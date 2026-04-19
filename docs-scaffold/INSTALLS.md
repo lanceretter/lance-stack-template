@@ -11,9 +11,9 @@ reminder at the end of its run.
 
 | Repo | Default branch | Installed version | Notes |
 |---|---|---|---|
-| [conquest-solutions/conquest-hub](https://github.com/conquest-solutions/conquest-hub) | main | v1.2.0 | Primary proving ground — most template changes land here first. |
-| [conquest-solutions/conquest-lpr](https://github.com/conquest-solutions/conquest-lpr) | main | v1.2.0 | |
-| [trashtastic-hq/trashtastic-website-production](https://github.com/trashtastic-hq/trashtastic-website-production) | main | v1.1.0 | Local folder name: `trashtastic-website-beta`. Behind on `doc-auto-update.yml`. |
+| [conquest-solutions/conquest-hub](https://github.com/conquest-solutions/conquest-hub) | main | v1.3.0 | Primary proving ground — most template changes land here first. |
+| [conquest-solutions/conquest-lpr](https://github.com/conquest-solutions/conquest-lpr) | main | v1.3.0 | |
+| [trashtastic-hq/trashtastic-website-production](https://github.com/trashtastic-hq/trashtastic-website-production) | main | v1.3.0 | Local folder name: `trashtastic-website-beta`. No `ANTHROPIC_API_KEY` set — `doc-auto-update.yml` will fail loud on merges until secret is added or `skip-docs` label is used. |
 
 ## How updates propagate
 
