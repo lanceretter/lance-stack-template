@@ -16,7 +16,7 @@ gbrain (PlanetScale)       → searchable index of everything; shared across mac
 
 | Layer | Source of truth | Local path | Cross-machine |
 |---|---|---|---|
-| Tools | `garrytan/gstack`, `garrytan/gbrain` (pinned at `08b3698` = v0.18.2) | `~/.claude/skills/gstack`, `~/gbrain` | git clone |
+| Tools | `garrytan/gstack`, `garrytan/gbrain` (master, currently v0.22.8) | `~/.claude/skills/gstack`, `~/gbrain` | git clone |
 | Claude config | `lanceretter/claude-dotfiles` | `~/RetterCode/claude-dotfiles/` | git pull |
 | gstack memory | `lanceretter/gstack-brain-lanceretter` (private) | `~/.gstack/` | git pull (auto on skill end) |
 | gbrain index | PlanetScale Postgres (`us-east-4.pg.psdb.cloud`) | `~/.gbrain/config.json` | shared DB; nothing to sync |
@@ -31,22 +31,24 @@ gbrain (PlanetScale)       → searchable index of everything; shared across mac
 git clone https://github.com/garrytan/gstack ~/.claude/skills/gstack
 cd ~/.claude/skills/gstack && ./setup
 
-# gbrain — PIN TO v0.18.2 (08b3698) to match the existing brain's schema (v24)
+# gbrain — master is fine; brain DB is already at schema v29.
 # Do NOT use bun install -g — postinstall hook gets blocked, schema migrations skip.
 git clone https://github.com/garrytan/gbrain ~/gbrain
 cd ~/gbrain
-git checkout 08b3698                    # v0.18.2 — see "Why pinned" below
 chmod +x src/cli.ts                     # bun link's symlink target needs exec bit
 bun install
 bun link
-gbrain --version                        # must print "gbrain 0.18.2"
+gbrain --version                        # currently prints 0.22.8
 ```
 
-**Why pinned:** the upstream gbrain master is at v0.22.8 (Apr 2026), but the brain
-DB schema on PlanetScale is at v24 (last touched by v0.18.2). Upgrading mid-flight
-fails: v0.22.8's runtime queries `content_chunks.search_vector` (added in v0.20),
-and `gbrain apply-migrations --yes` aborts on "MINIONS HALF-INSTALLED (v0.11.0)".
-Both Macs pin to v0.18.2 until upstream ships a clean v0.18 → v0.22 migration.
+> **Heads-up if you ever clone the brain DB into a fresh PlanetScale project:**
+> when upgrading a pre-v0.20 schema, `gbrain apply-migrations --yes` aborts on
+> `column "search_vector" does not exist` because v0.22's runtime queries columns
+> that v0.20's migration adds, and the chain refuses to start. Manual prep
+> (one-time): `ALTER TABLE content_chunks ADD COLUMN IF NOT EXISTS search_vector TSVECTOR;`
+> plus the other six v0.20 columns (`symbol_type`, `start_line`, `end_line`,
+> `parent_symbol_path`, `doc_comment`, `symbol_name_qualified`). Then re-run
+> apply-migrations. Our existing brain is past this point.
 
 ### 2. Restore Claude config
 
@@ -131,9 +133,9 @@ Expected: 90+/100 health, 500+ pages, 100% embedded, two federated sources, MCP 
 - **PlanetScale URL is a secret.** Don't paste in chat or commit. Lives in `~/.gbrain/config.json` at mode 0600 — copy it from main Mac via `scp` or 1Password.
 - **gh CLI defaults to HTTPS.** If `gstack-brain-init` ever needs to run, pass `--remote https://github.com/...` not the SSH URL. (We hit this on the main Mac.)
 - **claude-dotfiles no longer tracks `gstack/`.** Don't be alarmed when it's missing from that repo on the new Mac — gstack memory is in its own canonical repo now (commit `4043c32` made the split).
-- **`gbrain search --source <id>` is documented but not yet implemented in v0.18.2.** All federated sources show in default search. Cosmetic source-page-count display also lags. Both fixed in v0.19+.
+- **`gbrain search --source <id>` filter looks broken in our brain.** All hits return regardless of `--source`, because every page got assigned `source_id='default'` during the original imports (the v0.22 multi-source code is fine; our data just isn't tagged). Searches still work; you just can't scope to one source. Fix on the to-do list: re-import via `gbrain sync --source <id>` after wiping the duplicate `default` rows.
 - **Don't run `bun install -g github:garrytan/gbrain`** — global postinstall hook gets blocked, schema migrations never run, CLI aborts on first PGLite open. Use `git clone + bun install + bun link`.
-- **Don't `git pull` to master on either Mac** until both upgrade together with a coordinated DB migration. The v0.18 → v0.22 chain has known failures (search SQL references columns from later schema versions). When the time comes, snapshot the brain first via `gbrain export --dir ~/brain-backup-$(date +%Y%m%d)`.
+- **Always snapshot before upgrading gbrain.** When upstream ships v0.23+, run `gbrain export --dir ~/gbrain-backups/$(date +%Y%m%d)` on one Mac before anyone pulls master. The v0.18 → v0.22 jump on this brain required a manual `ALTER TABLE` to add 7 columns before `apply-migrations` would proceed — future major versions could need similar prep.
 - **The `chmod +x src/cli.ts` step is mandatory.** `bun link` symlinks the global `gbrain` binary to `src/cli.ts`; if the file isn't executable you get `permission denied: gbrain`. Some git checkouts strip the exec bit; this restores it.
 
 ## When to update this doc
