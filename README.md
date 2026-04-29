@@ -5,6 +5,7 @@ My preferred tech stack for building full-stack TypeScript applications.
 ## What's Here
 
 - **[STACK.md](./STACK.md)** - Complete reference guide with all dependencies, configs, and patterns
+- **[NEW-MACHINE-SETUP.md](./NEW-MACHINE-SETUP.md)** - Reproduce my full Claude Code + gstack + gbrain setup on a fresh Mac (~15 min)
 - **[docs-scaffold/](./docs-scaffold/)** - Drop-in agent documentation system for new projects. Router + focused docs + CI coherence gate + weekly staleness cron. Adapted from [gbrain](https://github.com/garrytan/gbrain)'s skill pattern.
 - **[.cursor/](./.cursor/)** - Optional Cursor agent rules, commands, and hooks (see [Agent Workflow](#cursor-agent-workflow-optional) below)
 
