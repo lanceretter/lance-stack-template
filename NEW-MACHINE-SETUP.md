@@ -79,12 +79,19 @@ In a Claude Code session:
 /setup-gbrain
 ```
 
-When asked "Where should your brain live?" pick **"Supabase, I already have a connection string"** and paste the pooler URL. After that:
-- `gbrain doctor` should show 100% embed coverage and ~531+ pages
+When asked "Where should your brain live?" pick **"Supabase, I already have a connection string"** and paste the pooler URL.
+
+**Heads-up:** the brain is hosted on PlanetScale Postgres (`us-east-4.pg.psdb.cloud`), not Supabase. The skill's `gstack-gbrain-supabase-verify` helper hardcodes a `*.pooler.supabase.com` host check and will reject the URL. Bypass it by running `gbrain init --url <pooler>` directly — gbrain itself accepts any TLS-required Postgres URL. Make sure the URL keeps its `?sslmode=verify-full` query param (PlanetScale requires it) and is trimmed of whitespace before passing.
+
+After that:
+- `gbrain doctor` should show ~90/100 health and ~531+ pages
+- `gbrain stats` should show 1800+ embeddings
 - `gbrain sources list` should show `default` and `gstack-brain-lanceretter`
 - `claude mcp list` should include `gbrain ✓ Connected`
 
 **Do not** pick "auto-provision a new project" — that creates a separate empty brain.
+
+**Match gbrain versions across machines.** Init on a new Mac will try to migrate the shared brain forward in place. If your new Mac is running a much newer gbrain than the one that last touched the brain, the in-place migration can fail mid-flight (we hit `column "search_vector" does not exist` going from schema_version 2 to 29). Upgrade your main Mac first (`cd ~/git/gbrain && git pull && bun install && bun link`, run any `gbrain` command to trigger migrations), then bring the new Mac up.
 
 ### 5. OpenAI key for embeddings
 
