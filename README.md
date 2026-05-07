@@ -5,6 +5,8 @@ My preferred tech stack for building full-stack TypeScript applications.
 ## What's Here
 
 - **[STACK.md](./STACK.md)** - Complete reference guide with all dependencies, configs, and patterns
+- **[BETTER-AUTH.md](./BETTER-AUTH.md)** - Self-hosted auth on Cloudflare Workers. Pattern + the `pg.Client` vs `pg.Pool` Hyperdrive footgun.
+- **[MOBILE-APP.md](./MOBILE-APP.md)** - Native iOS/Android via Expo + EAS. Standalone repo layout, plain-fetch auth, TestFlight pipeline, footguns from real builds.
 - **[NEW-MACHINE-SETUP.md](./NEW-MACHINE-SETUP.md)** - Reproduce my full Claude Code + gstack + gbrain setup on a fresh Mac (~15 min)
 - **[docs-scaffold/](./docs-scaffold/)** - Drop-in agent documentation system for new projects. Router + focused docs + CI coherence gate + weekly staleness cron. Adapted from [gbrain](https://github.com/garrytan/gbrain)'s skill pattern.
 - **[.cursor/](./.cursor/)** - Optional Cursor agent rules, commands, and hooks (see [Agent Workflow](#cursor-agent-workflow-optional) below)
@@ -13,10 +15,11 @@ My preferred tech stack for building full-stack TypeScript applications.
 
 | Layer | Tech |
 |-------|------|
-| **Frontend** | React + Vite + TypeScript + TailwindCSS + shadcn/ui |
+| **Frontend (web)** | React + Vite + TypeScript + TailwindCSS + shadcn/ui |
+| **Mobile (native)** | Expo SDK 54 + React Native + MapLibre + CARTO. See MOBILE-APP.md. |
 | **Backend** | Cloudflare Workers + Hono + Zod |
 | **Database** | Supabase / PlanetScale / D1 + Drizzle ORM |
-| **Auth** | Clerk or Supabase Auth |
+| **Auth** | better-auth (recommended for new builds, see BETTER-AUTH.md) or Clerk |
 | **Deploy** | Cloudflare Pages + Workers |
 
 ## Usage

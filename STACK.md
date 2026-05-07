@@ -11,7 +11,7 @@ Everything runs locally for development, but deploys to Cloudflare with zero cha
 ### Key Principles
 
 1. **Local Wrangler** — API runs via `wrangler dev --persist-to .wrangler/state` on port 8787
-2. **Vite Proxy** — Frontend proxies `/api/*` to localhost:8787 during dev
+2. **Vite Proxy** — Frontend proxies `/api/`* to localhost:8787 during dev
 3. **Shared Core Package** — Business logic in `packages/core/`, imported by both web and api
 4. **Same Code, Any Database** — Core logic is database-agnostic; swap KV/D1/PlanetScale via bindings
 
@@ -34,10 +34,12 @@ npm run dev  # concurrently runs both
 
 The core package contains pure business logic with no database dependencies. Database access happens at the API layer:
 
-| Environment | Database | Access Method |
-|-------------|----------|---------------|
-| **Local Dev** | D1 (SQLite) or KV | `wrangler dev --persist-to` |
+
+| Environment    | Database                     | Access Method                    |
+| -------------- | ---------------------------- | -------------------------------- |
+| **Local Dev**  | D1 (SQLite) or KV            | `wrangler dev --persist-to`      |
 | **Production** | D1, PlanetScale, or Supabase | Cloudflare bindings / Hyperdrive |
+
 
 For PlanetScale/external Postgres, use Hyperdrive for connection pooling (Hyperdrive config: use port **6432**, not 5432 — see "Hyperdrive for Production" below).
 
@@ -61,11 +63,13 @@ Optional guidance for working with Cursor's AI agent in this stack. These patter
 ### Plan-First Workflow
 
 Use **Plan Mode** (`Shift+Tab`) for:
+
 - New features spanning multiple files/packages
 - Architectural changes (adding new bindings, changing auth, DB migrations)
 - Unfamiliar areas of the codebase
 
 Skip planning for:
+
 - Quick bug fixes in a single file
 - Adding a new Hono route following existing patterns
 - Simple UI tweaks in `apps/web`
@@ -76,14 +80,16 @@ Skip planning for:
 
 When prompting, tag relevant paths to help the agent find context faster:
 
-| Task | Tag These |
-|------|-----------|
-| API changes | `apps/api/`, `wrangler.toml` |
-| Frontend changes | `apps/frontend/`, `vite.config.ts` |
-| Shared logic | `packages/core/` |
-| Full-stack feature | `apps/api/`, `apps/web/`, `packages/core/` |
-| Auth changes | `apps/api/src/` (middleware), `apps/web/src/` (ClerkProvider) |
-| Database schema | `sql/migrations/`, `wrangler.toml` |
+
+| Task               | Tag These                                                     |
+| ------------------ | ------------------------------------------------------------- |
+| API changes        | `apps/api/`, `wrangler.toml`                                  |
+| Frontend changes   | `apps/frontend/`, `vite.config.ts`                            |
+| Shared logic       | `packages/core/`                                              |
+| Full-stack feature | `apps/api/`, `apps/web/`, `packages/core/`                    |
+| Auth changes       | `apps/api/src/` (middleware), `apps/web/src/` (ClerkProvider) |
+| Database schema    | `sql/migrations/`, `wrangler.toml`                            |
+
 
 The agent can also search the codebase automatically — don't over-tag if you're unsure.
 
@@ -102,11 +108,13 @@ Tests give the agent a clear success signal to iterate against.
 ### Git Workflow Safety
 
 **Never commit secrets.** This stack uses:
+
 - `.env.local` / `.env.production` for frontend env vars (gitignored)
 - `wrangler secret put` for Worker secrets (never in code)
 - Clerk keys should be in env files or Cloudflare secrets, not committed
 
 **Commit hygiene:**
+
 - Commit logical units of work separately
 - Use descriptive commit messages (the agent can help draft these)
 - Review diffs before accepting — AI-generated code can look correct but have subtle bugs
@@ -114,11 +122,13 @@ Tests give the agent a clear success signal to iterate against.
 ### When to Start a New Chat
 
 **Start fresh when:**
+
 - Moving to a different feature or package
 - The agent seems confused or keeps repeating mistakes
 - You've finished one logical unit of work
 
 **Continue the conversation when:**
+
 - Iterating on the same feature
 - Debugging something the agent just built
 - The agent needs earlier context
@@ -128,6 +138,7 @@ Long conversations accumulate noise. If agent effectiveness drops, start a new c
 ### Useful Agent Commands
 
 If you've set up `.cursor/commands/` (see below), you can use:
+
 - `/pr` — Commit, push, and open a pull request
 - `/review` — Run checks and summarize potential issues
 - `/fix-issue [number]` — Fetch a GitHub issue and implement a fix
@@ -203,26 +214,29 @@ project-name/
 
 ## 🎨 Frontend Stack
 
-| Category | Choice | Version |
-|----------|--------|---------|
-| **Framework** | React | 18.x |
-| **Build Tool** | Vite | 5.x |
-| **Language** | TypeScript | 5.x |
-| **Styling** | TailwindCSS | 3.4.x |
-| **Animations** | tailwindcss-animate | 1.x |
-| **Component Library** | shadcn/ui | (copy-paste) |
-| **UI Primitives** | Radix UI | @radix-ui/react-* |
-| **Icons** | Lucide React | latest |
-| **Routing** | React Router DOM | 6.x |
-| **Data Fetching** | TanStack React Query | 5.x |
-| **Forms** | React Hook Form | 7.x |
-| **Form Validation** | Zod + @hookform/resolvers | latest |
-| **Tables** | TanStack React Table | 8.x |
-| **Toasts** | Sonner | 1.x |
-| **Date Handling** | date-fns | 3.x |
-| **Charts** | Recharts | 2.x |
+
+| Category              | Choice                    | Version           |
+| --------------------- | ------------------------- | ----------------- |
+| **Framework**         | React                     | 18.x              |
+| **Build Tool**        | Vite                      | 5.x               |
+| **Language**          | TypeScript                | 5.x               |
+| **Styling**           | TailwindCSS               | 3.4.x             |
+| **Animations**        | tailwindcss-animate       | 1.x               |
+| **Component Library** | shadcn/ui                 | (copy-paste)      |
+| **UI Primitives**     | Radix UI                  | @radix-ui/react-* |
+| **Icons**             | Lucide React              | latest            |
+| **Routing**           | React Router DOM          | 6.x               |
+| **Data Fetching**     | TanStack React Query      | 5.x               |
+| **Forms**             | React Hook Form           | 7.x               |
+| **Form Validation**   | Zod + @hookform/resolvers | latest            |
+| **Tables**            | TanStack React Table      | 8.x               |
+| **Toasts**            | Sonner                    | 1.x               |
+| **Date Handling**     | date-fns                  | 3.x               |
+| **Charts**            | Recharts                  | 2.x               |
+
 
 ### Utility Libraries
+
 - `clsx` - Conditional classnames
 - `tailwind-merge` - Merge Tailwind classes without conflicts
 - `class-variance-authority` - Component variants (CVA)
@@ -550,12 +564,14 @@ Cloudflare-inspired dark theme with near-neutral grays, thin scrollbars:
 
 ## ⚡ Backend Stack
 
-| Category | Choice |
-|----------|--------|
-| **Runtime** | Cloudflare Workers |
-| **Framework** | Hono |
-| **Validation** | Zod |
-| **Config** | wrangler.toml |
+
+| Category       | Choice             |
+| -------------- | ------------------ |
+| **Runtime**    | Cloudflare Workers |
+| **Framework**  | Hono               |
+| **Validation** | Zod                |
+| **Config**     | wrangler.toml      |
+
 
 ### API Dependencies
 
@@ -632,11 +648,13 @@ export default {
 
 ## 🗄️ Database Options
 
-| Database | Use Case | ORM/Client |
-|----------|----------|------------|
-| **PlanetScale** | Serverless PostgreSQL, branching | `postgres` via Hyperdrive |
-| **Supabase** | Full-featured PostgreSQL + Auth + Realtime | `@supabase/supabase-js` |
-| **Cloudflare D1** | Simple SQLite, low-latency | Raw SQL or Drizzle |
+
+| Database          | Use Case                                   | ORM/Client                |
+| ----------------- | ------------------------------------------ | ------------------------- |
+| **PlanetScale**   | Serverless PostgreSQL, branching           | `postgres` via Hyperdrive |
+| **Supabase**      | Full-featured PostgreSQL + Auth + Realtime | `@supabase/supabase-js`   |
+| **Cloudflare D1** | Simple SQLite, low-latency                 | Raw SQL or Drizzle        |
+
 
 ### PlanetScale Setup (Preferred)
 
@@ -707,6 +725,7 @@ cat sql/migrations/003_add_customer_status.sql | pscale shell my-db main --org m
 ```
 
 **Migration rules:**
+
 1. Never modify existing migrations — create new ones
 2. Naming: `XXX_description.sql` (e.g., `004_add_webhook_events.sql`)
 3. Keep `sql/schema.sql` updated with full current schema
@@ -791,25 +810,24 @@ Worker validates → Clerk API (using sk_live_xxx)
 #### 1. Clerk Dashboard (Production Instance)
 
 1. **Enable Google OAuth:**
-   - User & Authentication → Social Connections → Google
-   - Toggle "Enable for sign-up and sign-in"
-   - Toggle "Use custom credentials" (required for production)
-   - Copy the **Authorized redirect URI** (looks like `https://xxx.clerk.accounts.dev/v1/oauth_callback`)
-
+  - User & Authentication → Social Connections → Google
+  - Toggle "Enable for sign-up and sign-in"
+  - Toggle "Use custom credentials" (required for production)
+  - Copy the **Authorized redirect URI** (looks like `https://xxx.clerk.accounts.dev/v1/oauth_callback`)
 2. **Get your keys:**
-   - Settings → API Keys
-   - Copy `pk_live_xxx` (Publishable key)
-   - Copy `sk_live_xxx` (Secret key)
+  - Settings → API Keys
+  - Copy `pk_live_xxx` (Publishable key)
+  - Copy `sk_live_xxx` (Secret key)
 
 #### 2. Google Cloud Console
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com/) → APIs & Services → Credentials
 2. Create OAuth 2.0 Client ID (Web application)
 3. **Authorized JavaScript origins:**
-   - `http://localhost:5173`
-   - `https://your-app.pages.dev`
+  - `http://localhost:5173`
+  - `https://your-app.pages.dev`
 4. **Authorized redirect URIs:**
-   - Paste the Clerk redirect URI from step 1
+  - Paste the Clerk redirect URI from step 1
 5. Copy Client ID and Client Secret back to Clerk dashboard
 6. **Set publishing status to "In Production"** (otherwise limited to 100 test users)
 
@@ -905,6 +923,7 @@ app.get("/api/protected", requireAuth, async (c) => {
 ### Free Tier Limits
 
 Clerk free tier includes:
+
 - **10,000 monthly active users**
 - **Unlimited social connections** (Google, GitHub, etc.)
 - **No restrictions on localhost**
@@ -913,24 +932,28 @@ Clerk free tier includes:
 
 ## 🔐 Alternative Auth Options
 
-| Provider | Best For |
-|----------|----------|
-| **Supabase Auth** | When already using Supabase for everything |
-| **Simple Password** | Internal tools (X-App-Password header) |
+
+| Provider            | Best For                                   |
+| ------------------- | ------------------------------------------ |
+| **Supabase Auth**   | When already using Supabase for everything |
+| **Simple Password** | Internal tools (X-App-Password header)     |
+
 
 ---
 
 ## ☁️ Cloudflare Bindings
 
-| Binding | Use Case | wrangler.toml |
-|---------|----------|---------------|
-| **KV Namespace** | Config, cache, sessions | `[[kv_namespaces]]` |
-| **R2 Bucket** | File/image storage | `[[r2_buckets]]` |
-| **D1 Database** | SQLite database | `[[d1_databases]]` |
-| **Hyperdrive** | External DB connection pooling | `[[hyperdrive]]` |
-| **Queues** | Background jobs | `[[queues.producers]]` |
-| **Durable Objects** | Real-time, WebSockets | `[[durable_objects.bindings]]` |
-| **Cron Triggers** | Scheduled tasks | `[triggers]` |
+
+| Binding             | Use Case                       | wrangler.toml                  |
+| ------------------- | ------------------------------ | ------------------------------ |
+| **KV Namespace**    | Config, cache, sessions        | `[[kv_namespaces]]`            |
+| **R2 Bucket**       | File/image storage             | `[[r2_buckets]]`               |
+| **D1 Database**     | SQLite database                | `[[d1_databases]]`             |
+| **Hyperdrive**      | External DB connection pooling | `[[hyperdrive]]`               |
+| **Queues**          | Background jobs                | `[[queues.producers]]`         |
+| **Durable Objects** | Real-time, WebSockets          | `[[durable_objects.bindings]]` |
+| **Cron Triggers**   | Scheduled tasks                | `[triggers]`                   |
+
 
 ### Example wrangler.toml
 
@@ -964,16 +987,19 @@ crons = ["0 8 * * *"]  # Daily at 8 AM UTC
 
 ## 🚀 Deployment
 
-| Component | Platform | Command |
-|-----------|----------|---------|
-| **Frontend** | Cloudflare Pages | `wrangler pages deploy dist` |
-| **API** | Cloudflare Workers | `wrangler deploy` |
+
+| Component    | Platform           | Command                      |
+| ------------ | ------------------ | ---------------------------- |
+| **Frontend** | Cloudflare Pages   | `wrangler pages deploy dist` |
+| **API**      | Cloudflare Workers | `wrangler deploy`            |
+
 
 ### One-Command Deploy Setup
 
 Always wire up deploy scripts so anyone can run `npm run deploy` from the root without knowing project names or flags.
 
 **Root `package.json`:**
+
 ```json
 {
   "scripts": {
@@ -992,7 +1018,8 @@ Always wire up deploy scripts so anyone can run `npm run deploy` from the root w
 }
 ```
 
-**`apps/api/package.json`** — pass `--env=""` when wrangler.toml has multiple `[env.*]` sections, or you'll get a warning every deploy:
+`**apps/api/package.json**` — pass `--env=""` when wrangler.toml has multiple `[env.*]` sections, or you'll get a warning every deploy:
+
 ```json
 {
   "scripts": {
@@ -1001,7 +1028,8 @@ Always wire up deploy scripts so anyone can run `npm run deploy` from the root w
 }
 ```
 
-**`apps/web/package.json`** — chain build + pages deploy:
+`**apps/web/package.json**` — chain build + pages deploy:
+
 ```json
 {
   "scripts": {
@@ -1011,7 +1039,8 @@ Always wire up deploy scripts so anyone can run `npm run deploy` from the root w
 }
 ```
 
-**`apps/web/wrangler.toml`** — add this so wrangler knows the Pages project name and output dir without flags:
+`**apps/web/wrangler.toml**` — add this so wrangler knows the Pages project name and output dir without flags:
+
 ```toml
 name = "your-pages-project-name"
 pages_build_output_dir = "dist"
@@ -1028,6 +1057,7 @@ Cannot apply new-class migration to class 'MyDO' that is already depended on [co
 ```
 
 **Rules:**
+
 - Never delete migration entries from `wrangler.toml` — only add new ones
 - If you deleted a DO class and now need it back: add a `deleted_classes` migration, then a new `new_classes` migration
 - If Cloudflare reports a tag you don't have locally, add it back to re-sync
@@ -1122,7 +1152,7 @@ if (parsedResult?.type === "clarification_request") {
 
 No single mechanism is enough across all models. Use all three:
 
-1. **`need_clarification` tool** (structural) — AI explicitly signals stuck state, server hard-exits loop
+1. `**need_clarification` tool** (structural) — AI explicitly signals stuck state, server hard-exits loop
 2. **Empty-result streak detection** (server-side guardrail) — after 3 consecutive zero-row queries, inject a forced nudge as a `user` role message: *"call need_clarification now"*
 3. **System prompt rules** (prompt-level) — explicit: try once → try one alternative → call `need_clarification`. Never more than 2 queries on the same concept
 
@@ -1228,11 +1258,13 @@ When AI query results are truncated, emit a `data_overflow` SSE event — the fr
 
 Three distinct paths based on user intent:
 
-| Action | Tool | Mechanism | Result |
-|--------|------|-----------|--------|
-| Immediate download | `generate_csv_report` | Unlimited query → R2 → `csv_download` preview | User clicks Download |
-| Email delivery | `queue_report` | Cloudflare Workflow (async) | Email with attachment |
-| Overflow card CSV | — | `POST /export-csv` → direct bytes | Browser download |
+
+| Action             | Tool                  | Mechanism                                     | Result                |
+| ------------------ | --------------------- | --------------------------------------------- | --------------------- |
+| Immediate download | `generate_csv_report` | Unlimited query → R2 → `csv_download` preview | User clicks Download  |
+| Email delivery     | `queue_report`        | Cloudflare Workflow (async)                   | Email with attachment |
+| Overflow card CSV  | —                     | `POST /export-csv` → direct bytes             | Browser download      |
+
 
 The overflow card stores the user's last choice (CSV / PDF / Email) in `localStorage` so preference is remembered across sessions.
 
@@ -1243,6 +1275,7 @@ For immediate CSV downloads from an endpoint, **stream the CSV bytes directly in
 Use Cloudflare Workflows (not Durable Objects) for long-running AI-triggered jobs like report generation and email delivery. Workflows survive the 30-second Worker CPU limit and have built-in step retries.
 
 Key differences from Durable Objects:
+
 - **No `[[migrations]]` in wrangler.toml** — Workflows don't need them (that's DO-only)
 - Steps are durable — if a step fails it retries without re-running prior steps
 - Each step must return serializable data (use `as unknown as T` casts against Cloudflare's `Serializable<T>`)
@@ -1277,20 +1310,24 @@ See `AI-CHAT.md` for full Workflow boilerplate, SSE event schemas, tool definiti
 
 ---
 
-## 📱 Mobile (Optional)
+## 📱 Mobile (Native iOS / Android via Expo)
 
-When you need iOS/Android from the web app:
+When you need a real native mobile app, see **[MOBILE-APP.md](./MOBILE-APP.md)** for the full pattern.
 
-```json
-{
-  "dependencies": {
-    "@capacitor/android": "^7.4.3",
-    "@capacitor/cli": "^7.4.3",
-    "@capacitor/core": "^7.4.3",
-    "@capacitor/ios": "^7.4.3"
-  }
-}
-```
+> **Note:** Capacitor is no longer the recommended path. Capacitor wraps your existing Vite app in a WebView; for anything where users live in the app for hours (drivers, field techs, delivery), the web-y feel hurts. Expo + React Native gives you a real native app with first-class access to OS features.
+
+Quick summary:
+
+| | |
+|---|---|
+| **Framework** | Expo SDK 54 + React Native 0.81 |
+| **Repo layout** | Standalone at `apps/<name>/` with own `node_modules`. NOT a workspace (mixing React 18 + 19 breaks). |
+| **Maps** | `@maplibre/maplibre-react-native` + free CARTO basemaps. No API key needed. |
+| **Auth** | Plain fetch wrappers + react-query. NOT `better-auth/react` (web-only globals). See MOBILE-APP.md → "Auth: plain fetch". |
+| **Build** | EAS Cloud Build (no Xcode locally). Profiles: development-simulator, development, staging, production. |
+| **Distribution** | TestFlight Internal Testing for team dogfood (no UDIDs). App Store Review when ready for public. |
+| **OTA** | `expo-updates` (free, S3-backed). JS-only fixes ship without rebuild. |
+| **Reference impl** | rv-helper (RV Joyride), trashtastic-helix (driver app, May 2026) |
 
 ---
 
@@ -1786,6 +1823,7 @@ The panel renders as an **inline flex sibling** — not a modal overlay — so u
 ```
 
 Make the panel resizable with a drag handle:
+
 - Track `width` in state, persist to `localStorage`
 - Clamp between 320px and 800px
 - Set `document.body.style.cursor = "col-resize"` during drag
@@ -1794,12 +1832,14 @@ Make the panel resizable with a drag handle:
 
 Use OpenRouter for multi-model access. Tier by cost and capability:
 
-| Tier | Models | Cost/question* | Use for |
-|------|--------|----------------|---------|
-| **Premium** | Claude Opus 4.6 | ~$0.07 | Complex multi-step analysis |
-| **Pro** | Sonnet 4.6, Gemini 2.5 Pro, GPT-4.1 | ~$0.02-0.04 | General intelligence |
-| **Fast** | Gemini 2.5 Flash, GPT-4.1 Mini, Haiku 4.5 | ~$0.005-0.01 | **Default — best for SQL/tools** |
-| **Budget** | DeepSeek V3.2, GPT-4.1 Nano | ~$0.001-0.002 | Simple lookups |
+
+| Tier        | Models                                    | Cost/question* | Use for                          |
+| ----------- | ----------------------------------------- | -------------- | -------------------------------- |
+| **Premium** | Claude Opus 4.6                           | ~$0.07         | Complex multi-step analysis      |
+| **Pro**     | Sonnet 4.6, Gemini 2.5 Pro, GPT-4.1       | ~$0.02-0.04    | General intelligence             |
+| **Fast**    | Gemini 2.5 Flash, GPT-4.1 Mini, Haiku 4.5 | ~$0.005-0.01   | **Default — best for SQL/tools** |
+| **Budget**  | DeepSeek V3.2, GPT-4.1 Nano               | ~$0.001-0.002  | Simple lookups                   |
+
 
 *~6k input + 1.4k output tokens per question with tool use.
 
@@ -1809,13 +1849,13 @@ Let users pick a higher tier from a dropdown when they need deeper analysis.
 
 ### Safety Checklist
 
-- [ ] **Keyword blocklist** — regex `\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE)\b` on every query
-- [ ] **Sensitive column blocking** — prevent `SELECT *` from credential tables; block specific column names
-- [ ] **Row limit** — auto-append `LIMIT 200` when no LIMIT present
-- [ ] **Auth required** — Clerk token validation on every request
-- [ ] **Model allowlist** — backend validates model ID against approved list
-- [ ] **Max tool rounds** — cap at 6-8 to prevent infinite loops
-- [ ] **System prompt prohibitions** — explicitly tell the LLM what NOT to do
+- **Keyword blocklist** — regex `\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE)\b` on every query
+- **Sensitive column blocking** — prevent `SELECT `* from credential tables; block specific column names
+- **Row limit** — auto-append `LIMIT 200` when no LIMIT present
+- **Auth required** — Clerk token validation on every request
+- **Model allowlist** — backend validates model ID against approved list
+- **Max tool rounds** — cap at 6-8 to prevent infinite loops
+- **System prompt prohibitions** — explicitly tell the LLM what NOT to do
 
 ### Environment Variables
 
@@ -1829,16 +1869,18 @@ OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxx
 
 ### Common Pitfalls
 
-| Pitfall | Solution |
-|---------|----------|
-| LLM says "I can't do that" | Add "always try a query first" to system prompt |
-| Wrong column names | Include full schema in system prompt, not just table names |
-| `BEGIN READ ONLY` fails on PlanetScale | Don't use transaction wrappers — run SELECT directly |
-| Multi-statement SQL fails via Hyperdrive | Execute single query with `client.unsafe()` |
-| `Boolean("false") === true` | Use `z.preprocess()` not `z.coerce.boolean()` for query params |
-| Model ID not found on OpenRouter | Verify against `curl https://openrouter.ai/api/v1/models` |
-| High costs | Default to Fast tier model; let users upgrade per-question |
-| Password leaks | Block at SQL level (keyword check), not just prompt level |
+
+| Pitfall                                  | Solution                                                       |
+| ---------------------------------------- | -------------------------------------------------------------- |
+| LLM says "I can't do that"               | Add "always try a query first" to system prompt                |
+| Wrong column names                       | Include full schema in system prompt, not just table names     |
+| `BEGIN READ ONLY` fails on PlanetScale   | Don't use transaction wrappers — run SELECT directly           |
+| Multi-statement SQL fails via Hyperdrive | Execute single query with `client.unsafe()`                    |
+| `Boolean("false") === true`              | Use `z.preprocess()` not `z.coerce.boolean()` for query params |
+| Model ID not found on OpenRouter         | Verify against `curl https://openrouter.ai/api/v1/models`      |
+| High costs                               | Default to Fast tier model; let users upgrade per-question     |
+| Password leaks                           | Block at SQL level (keyword check), not just prompt level      |
+
 
 ### OpenRouter API Quick Reference
 
@@ -1873,3 +1915,4 @@ curl https://openrouter.ai/api/v1/auth/key \
 - [Drizzle ORM](https://orm.drizzle.team/)
 - [Clerk Docs](https://clerk.com/docs)
 - [OpenRouter Docs](https://openrouter.ai/docs)
+
