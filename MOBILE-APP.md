@@ -548,7 +548,9 @@ Config the channels in eas.json (matching the build profiles); `expo-updates` re
 
 12. **`eas submit --latest` doesn't always match.** It looks for builds without an existing submission record. If you've started + aborted submits, the build is "claimed" already. Use `--id <build-uuid>` explicitly.
 
-13. **iPad with cradle assumption changes everything.** If your app is for a fleet running iPads in dashboard cradles (delivery driver, field tech), the iOS background-location landmines mostly don't apply. Foreground GPS works fine on a screen-on always-foreground device. `expo-keep-awake` keeps the screen alive. Don't over-engineer for backgrounded states you'll never hit.
+13. **Build "Ready to Submit" + tester sees "No builds available" = group/build linkage broken.** EAS auto-creates a `Team (Expo)` Internal Testing group on first submit, and the build SHOULD attach to it automatically. Sometimes it doesn't — the build sits at "Ready to Submit" in App Store Connect, the tester opens TestFlight on their phone and sees "no builds available", and there is NO visible "+" or "add to group" button in ASC. The fix that works: **delete the Internal Testing group, delete the testers, recreate the group, re-invite the testers.** That forces ASC to re-attach the latest build. After ~30 seconds the build flips to "Testing" status and shows up in TestFlight. Annoying but reliable. Don't waste an hour hunting for a button that isn't there.
+
+14. **iPad with cradle assumption changes everything.** If your app is for a fleet running iPads in dashboard cradles (delivery driver, field tech), the iOS background-location landmines mostly don't apply. Foreground GPS works fine on a screen-on always-foreground device. `expo-keep-awake` keeps the screen alive. Don't over-engineer for backgrounded states you'll never hit.
 
 ---
 
