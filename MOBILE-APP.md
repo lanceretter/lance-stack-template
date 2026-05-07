@@ -458,6 +458,36 @@ eas submit --platform ios --latest
 #    → API key cached on EAS servers; future submits run non-interactive
 ```
 
+### What gets cached on first interactive run
+
+The first `eas build --profile staging` and the first `eas submit` each prompt for Apple credentials + 2FA. After that they don't, because EAS caches:
+
+- **Distribution certificate + provisioning profile** (after first build) — stored on EAS servers, reused across all future builds for this team. Reuse existing certs when EAS asks; new ones aren't needed per-app.
+- **App Store Connect API Key** (after first submit) — auto-generated, named `[Expo] EAS Submit <random>`, stored on EAS servers. Future submits authenticate with this key, no Apple 2FA needed.
+
+To make submits fully non-interactive going forward, pin the ASC app ID + Apple team ID in `eas.json`:
+
+```json
+"submit": {
+  "staging": {
+    "ios": {
+      "ascAppId": "6767225088",
+      "appleTeamId": "9W395T3YRM"
+    }
+  },
+  "production": {
+    "ios": {
+      "ascAppId": "6767225088",
+      "appleTeamId": "9W395T3YRM"
+    }
+  }
+}
+```
+
+`ascAppId` comes from the App Store Connect URL after EAS creates the app entry (`appstoreconnect.apple.com/apps/<id>/...`). `appleTeamId` shows in the EAS submit output (`Team Conquest Solutions, LLC (XXXXXXXXXX)`).
+
+Without these pinned, the next submit will warn "submit profile missing, falling back to production" and re-prompt for Apple ID interactively.
+
 ### Distribution: Internal Testing on TestFlight
 
 For internal team testing (up to 100 testers), **TestFlight Internal Testing** is the right path:
@@ -512,9 +542,71 @@ Config the channels in eas.json (matching the build profiles); `expo-updates` re
 
 9. **TestFlight shows the build before Apple finishes processing.** "Processing" status in App Store Connect TestFlight tab can take 10-30 min. The build is uploaded but not installable until processing finishes. Don't panic; it's not stuck.
 
-10. **iPad with cradle assumption changes everything.** If your app is for a fleet running iPads in dashboard cradles (delivery driver, field tech), the iOS background-location landmines mostly don't apply. Foreground GPS works fine on a screen-on always-foreground device. `expo-keep-awake` keeps the screen alive. Don't over-engineer for backgrounded states you'll never hit.
+10. **EAS submit "waiting for available submitter" is normal.** EAS has a pool of submitter workers (Mac VMs running Apple's Transporter) shared across all users. Peak US business hours can mean 10-30 min queue waits, occasionally an hour. Don't cancel + retry — puts you at the back of the queue. If it's been >1 hour, escalate to Expo support.
+
+11. **First `eas submit` flow is interactive even with `--non-interactive`.** First submit needs to create the App Store Connect app entry, register the bundle ID, and generate the ASC API key. All require Apple 2FA on a trusted device. Once done, EAS caches everything — future submits run non-interactive. See "What gets cached on first interactive run" above.
+
+12. **`eas submit --latest` doesn't always match.** It looks for builds without an existing submission record. If you've started + aborted submits, the build is "claimed" already. Use `--id <build-uuid>` explicitly.
+
+13. **iPad with cradle assumption changes everything.** If your app is for a fleet running iPads in dashboard cradles (delivery driver, field tech), the iOS background-location landmines mostly don't apply. Foreground GPS works fine on a screen-on always-foreground device. `expo-keep-awake` keeps the screen alive. Don't over-engineer for backgrounded states you'll never hit.
 
 ---
+
+## Team onboarding: getting your dev access
+
+Three independent memberships to wire up before another developer can build/ship under your account. They're independent — one person needs all three.
+
+### 1. Apple Developer Program team (signing + ASC)
+
+Lets the dev's machine sign builds under your team's certs and push to your App Store Connect apps.
+
+1. App Store Connect → **Users and Access** → click `+`
+2. Email + name
+3. **Role:** `App Manager` is the right default — they can build, manage TestFlight, push to App Store, but can't change billing or remove team owner. Skip `Admin` unless they actually need to manage team membership.
+4. **App access:** scope to specific apps if you want, or "all apps" if they're a generalist
+5. Apple emails them an invite. They accept on appleid.apple.com.
+
+After they accept, on their machine `eas build --platform ios --profile staging` will prompt them for THEIR Apple ID + 2FA. EAS detects your team via their account and uses your existing certs/profiles. No new dist cert needed.
+
+### 2. Expo organization (EAS access)
+
+Lets them run `eas` against your projects (build, submit, OTA updates).
+
+1. https://expo.dev/accounts/<your-org>/settings/members → "Invite member"
+2. Their Expo username (free signup at expo.dev if needed)
+3. **Role:** `Developer` for build/submit, `Admin` if they should also manage credentials, `Owner` for full org control
+
+After they accept, on their machine: `eas login` with their account, `cd apps/<your-app>`, `eas build` — works against the org's project.
+
+### 3. TestFlight Internal Testing group
+
+Lets them install the actual app on their phone/iPad once you ship a build.
+
+EAS auto-creates a group called `Team (Expo)` on first submit and adds you (the submitter) plus any user named `publish3@gonative.io` (Expo's automated test user — harmless, ignore). To add your dev:
+
+1. App Store Connect → your app → TestFlight tab → Internal Testing → `Team (Expo)`
+2. Add tester → pick the dev's Apple ID (must be in the team from step 1)
+3. They get a TestFlight invite email
+4. They install the TestFlight app on iPhone/iPad → accept invite → install your app
+
+Internal Testing supports up to 100 testers, no UDIDs needed, works on iPhone AND iPad with one Apple ID.
+
+### Personal-account → Organization conversion (one-time, before adding teammates)
+
+Expo accounts start as personal. To add team members, convert your personal account to an organization. The conversion has gotchas:
+
+- **Your username changes.** If you log in as `lanceretter`, after conversion `lanceretter` becomes the **org slug**, and you pick a NEW personal username (e.g. `lance.retter`). All of your `eas` commands now run under the new personal username, but builds + projects stay under the org slug.
+- **`app.json` owner field stays unchanged** if it was already set to the org slug (which `eas init` does automatically). If you have other apps that don't have `owner` set, add `"owner": "<your-org-slug>"` post-conversion.
+- **Active builds/submits keep working.** Org membership is automatic for the converting user (you become Owner), and existing builds/credentials stay linked. But to be safe, finish any in-flight `eas submit` BEFORE converting — your current `eas login` session is auth'd against the soon-to-be-renamed personal account, and there's a small chance the in-flight submit's auth gets orphaned.
+- **Org display name vs slug.** You can rename the **display name** anytime (cosmetic — appears in dashboard UI). The **slug** (used in URLs and `app.json` owner) requires Expo support and has a cooldown. Pick the slug carefully on first conversion.
+
+Recommended order for adding a new dev:
+
+1. Finish any in-flight builds/submits
+2. Convert personal → org (pick new personal username)
+3. `eas logout && eas login` with new personal username
+4. Verify: `cd apps/<app> && eas project:info` resolves to org
+5. Now do steps 1-3 above (Apple Developer team, Expo org, TestFlight group)
 
 ## Phase 0 spike pattern (highly recommended)
 
@@ -557,7 +649,9 @@ Plan reviews catch a lot, but Phase 0 spikes catch the things plan reviews can't
 4. Plain `fetch` for auth. NOT `createAuthClient` from `better-auth/react`.
 5. react-query for reactive session state on top of plain fetch.
 6. EAS profiles: `development-simulator`, `development`, `staging`, `production`.
-7. TestFlight Internal Testing for team dogfood. ASC API key after first interactive submit.
-8. Generate placeholder icons before first build (PREBUILD phase fails without them).
-9. `expo-doctor` before every push to EAS.
-10. Phase 0 API spike before scoping the build.
+7. TestFlight Internal Testing for team dogfood. ASC API key cached on EAS after first interactive submit.
+8. Pin `ascAppId` + `appleTeamId` in `eas.json` submit profile after first submit — makes future submits non-interactive.
+9. Generate placeholder icons before first build (PREBUILD phase fails without them).
+10. `expo-doctor` before every push to EAS.
+11. Phase 0 API spike before scoping the build.
+12. Convert personal Expo account → org BEFORE inviting teammates. New dev needs Apple Developer team membership + Expo org membership + TestFlight group access (three independent invites).
