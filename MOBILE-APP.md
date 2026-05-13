@@ -433,6 +433,12 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
 ## Build + ship pipeline
 
+Three runtime choices for producing a build, ordered by speed of iteration:
+
+1. **`expo run:ios` / `expo run:ios --device`** — Expo CLI compiles the native shell directly on your Mac, then attaches Metro for live JS. Fastest dev loop, runs immediately, no EAS account touched. Best for the inner dev cycle on a registered device.
+2. **`eas build --local --platform ios --profile <name>`** — EAS pipeline runs entirely on your Mac. Same `.ipa` artifact as a cloud build. Faster after the first run (CocoaPods + Xcode caches stay warm locally), doesn't consume EAS Cloud credits.
+3. **`eas build --platform ios --profile <name>`** — runs on EAS Cloud Macs. No local Xcode dependencies needed, queue + transfer time is the cost. Free tier has a monthly build cap; paid tiers buy faster queues.
+
 ```bash
 # 1. One-time setup (NOT npm workspace, NOT root install)
 cd apps/my-app
@@ -457,6 +463,108 @@ eas submit --platform ios --latest
 #    → first run interactive: ASC app creation + ASC API key generation
 #    → API key cached on EAS servers; future submits run non-interactive
 ```
+
+### Local builds (run on your Mac, same .ipa as cloud)
+
+Two distinct "local" paths with different setup costs:
+
+| Path | What it produces | Setup needed | Use when |
+|------|------------------|--------------|----------|
+| **`expo run:ios`** | Native dev-client `.app` for Simulator or paired device. Metro attaches for live JS. | Xcode + CocoaPods. macOS system Ruby (2.6) works for this. | Iterating on native module integration. The default local dev loop. |
+| **`eas build --local`** | Signed `.ipa` ready for TestFlight, identical to a cloud-built `.ipa`. | Xcode + CocoaPods + Ruby 3.0+ + Fastlane. | Shipping to TestFlight without queueing on EAS Cloud (4-10 min local vs 5-30 min cloud queue + 4-10 min build). |
+
+**Verify what your machine has:**
+
+```bash
+xcodebuild -version          # need Xcode 16+
+xcode-select -p              # must point at /Applications/Xcode.app/...
+pod --version                # 1.15+
+ruby --version               # 3.0+ for eas build --local; 2.6 OK for expo run:ios
+fastlane --version           # required ONLY for eas build --local
+```
+
+A working macOS dev box usually arrives with Xcode + CocoaPods + system Ruby 2.6 installed by Apple. That's enough for `expo run:ios`. To unlock `eas build --local`, run the upgrade below.
+
+**One-time upgrade for `eas build --local`:**
+
+```bash
+# Xcode 16+ — App Store, ~10GB. Command Line Tools alone is NOT enough.
+xcode-select --install                        # CLT (needed too)
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+xcodebuild -license accept                    # accept the SDK license
+
+# Ruby 3.0+ — macOS system Ruby is 2.6, too old for current Fastlane.
+brew install ruby
+echo 'export PATH="/opt/homebrew/opt/ruby/bin:$PATH"' >> ~/.zshrc
+# open new shell
+gem install fastlane -NV                      # EAS uses fastlane under the hood
+
+ruby -v        # → 3.x
+fastlane --version
+```
+
+Notes:
+- Don't `gem install` against system Ruby — modern Fastlane bundles fail on 2.6 with deprecation errors. The Homebrew Ruby `PATH` override is the cleanest fix.
+- `pod` in macOS Sonoma+ ships in the Xcode toolchain via Ruby 2.6 and works for `expo run:ios`. `eas build --local` invokes its own Ruby gems and needs the Homebrew Ruby on PATH.
+- The CocoaPods `1.15+` version requirement is satisfied by the system install on modern Xcode. If `pod --version` errors, run `gem install cocoapods` under the Homebrew Ruby.
+
+**`expo run:ios` — fastest dev loop:**
+
+```bash
+cd apps/my-app
+npx expo run:ios                              # default: iPhone Simulator
+npx expo run:ios --device                     # pick a paired physical device
+npx expo run:ios --device --configuration Release
+```
+
+This is the right command when iterating on native module integration (you added expo-secure-store, expo-location plugin, MapLibre, etc. and need a fresh native binary). It runs `expo prebuild` → installs CocoaPods → `xcodebuild` → installs to the chosen target. No EAS account needed.
+
+What it does NOT produce: a signed `.ipa` for TestFlight. For that, use `eas build --local`.
+
+**`eas build --local` — same artifact as cloud, but on your Mac:**
+
+```bash
+# Staging build, runs entirely locally:
+eas build --platform ios --profile staging --local
+
+# What you get:
+# → ./build-<timestamp>.ipa in the project root
+# → Same signing path as cloud (uses EAS-cached cert + profile, OR
+#   prompts to set them up locally on first run)
+# → Same env-var injection from eas.json
+# → Same autoIncrement of buildNumber if the profile has it
+```
+
+First local build downloads the EAS-cached distribution cert + provisioning profile to your Mac's Keychain. Subsequent local builds reuse them. If the cert was rotated on EAS Cloud, run `eas credentials` to refresh.
+
+**Submit a locally-built .ipa to TestFlight:**
+
+```bash
+# Option A: ask EAS to find the most recent local build automatically.
+eas submit --platform ios --path build-1747088421.ipa
+
+# Option B: chain build + submit:
+eas build --platform ios --profile staging --local && \
+  eas submit --platform ios --profile staging --path build-*.ipa --non-interactive
+```
+
+`eas submit --path <file>` skips the "fetch from EAS Cloud" step and uses your local file. ASC API key auth still applies (cached after first interactive submit per the section below). The build lands in TestFlight Internal Testing the same way a cloud-built submit does — processing time (10-30 min for Apple) is the same.
+
+**When to use which:**
+
+| Goal | Use |
+|------|-----|
+| Iterate on JS (UI, hooks, business logic) — no native changes | `expo start --dev-client` against an existing dev-client build |
+| Iterate on native modules (added expo-foo, MapLibre, etc.) | `npx expo run:ios --device` |
+| Ship to TestFlight, fastest local turnaround | `eas build --local --profile staging && eas submit --path build-*.ipa` |
+| Ship to TestFlight, don't want Xcode locally / no Mac on hand | `eas build --profile staging && eas submit --latest` (cloud) |
+| CI/CD that produces a TestFlight build per merge | `eas build` cloud (GitHub Actions can't reliably run Xcode) |
+
+**Credential bootstrap on a new Mac:**
+
+If you're picking up the project on a fresh machine, `eas build --local` will prompt to download the team's distribution cert. You need to be logged into the right EAS account AND a member of the Apple Developer team (see "Team onboarding" below). The cert lands in your login Keychain and stays there.
+
+`eas credentials --platform ios` is the maintenance command — list/rotate/delete certs and profiles from any machine. Run it once after team-onboarding to confirm you have read access to the cached cert.
 
 ### What gets cached on first interactive run
 
@@ -549,6 +657,14 @@ Config the channels in eas.json (matching the build profiles); `expo-updates` re
 12. **`eas submit --latest` doesn't always match.** It looks for builds without an existing submission record. If you've started + aborted submits, the build is "claimed" already. Use `--id <build-uuid>` explicitly.
 
 13. **Build "Ready to Submit" + tester sees "No builds available" = group/build linkage broken.** EAS auto-creates a `Team (Expo)` Internal Testing group on first submit, and the build SHOULD attach to it automatically. Sometimes it doesn't — the build sits at "Ready to Submit" in App Store Connect, the tester opens TestFlight on their phone and sees "no builds available", and there is NO visible "+" or "add to group" button in ASC. The fix that works: **delete the Internal Testing group, delete the testers, recreate the group, re-invite the testers.** That forces ASC to re-attach the latest build. After ~30 seconds the build flips to "Testing" status and shows up in TestFlight. Annoying but reliable. Don't waste an hour hunting for a button that isn't there.
+
+14. **`eas build --local` fails immediately with `bundler: command not found: fastlane`.** Either you haven't installed Fastlane, or you installed it against system Ruby 2.6 and the bundle resolution can't find a compatible version. Run `which fastlane` — must resolve to `/opt/homebrew/opt/ruby/bin/fastlane` (Homebrew Ruby) or `/usr/local/bin/fastlane` (Intel Homebrew). If it points at a `/Library/Ruby/Gems/...` path, you're on system Ruby and need to follow the upgrade above. Verify with `ruby --version` — must be 3.0+.
+
+15. **Local CocoaPods install hangs on `Installing X (Y.Z.W)` for minutes.** First-ever Pods install for the project downloads megabytes of native dependencies. Subsequent runs reuse `~/Library/Caches/CocoaPods/`. Don't kill it before 10 min on a fresh project. If it hangs >15 min, `pod repo update` to refresh the trunk spec cache, then retry. The progress bar updates rarely.
+
+16. **`expo run:ios --device` doesn't list your physical iPad/iPhone.** Device must be (a) unlocked, (b) connected via USB or paired over Wi-Fi via Xcode, (c) "Trust This Computer" accepted. `xcrun xctrace list devices` should show it. If you see the device under `xctrace` but not under `expo run:ios --device`, your Apple Developer account isn't a member of the team that signed the dev provisioning profile — Apple's restriction, fix via "Team onboarding" steps.
+
+17. **`eas build --local` produces an .ipa but `eas submit --path` rejects it.** The `.ipa` was built against the wrong profile (e.g. `development` instead of `staging`). Check the build profile in `eas.json` — only profiles WITHOUT `developmentClient: true` and WITHOUT `simulator: true` produce TestFlight-eligible binaries. Use `staging` or `production`.
 
 14. **iPad with cradle assumption changes everything.** If your app is for a fleet running iPads in dashboard cradles (delivery driver, field tech), the iOS background-location landmines mostly don't apply. Foreground GPS works fine on a screen-on always-foreground device. `expo-keep-awake` keeps the screen alive. Don't over-engineer for backgrounded states you'll never hit.
 
@@ -657,3 +773,5 @@ Plan reviews catch a lot, but Phase 0 spikes catch the things plan reviews can't
 10. `expo-doctor` before every push to EAS.
 11. Phase 0 API spike before scoping the build.
 12. Convert personal Expo account → org BEFORE inviting teammates. New dev needs Apple Developer team membership + Expo org membership + TestFlight group access (three independent invites).
+13. Three "local-ish" build commands, used for different things: `expo run:ios` (native dev shell with Metro for live JS, no .ipa), `eas build --local` (signed .ipa on your Mac for TestFlight, needs Ruby 3.0+ + Fastlane), `eas build` (.ipa on EAS Cloud Macs, no local Xcode needed). Pick by use case via the table in "Local builds".
+14. `expo run:ios` works on a default macOS dev box (Xcode + system Ruby). `eas build --local` needs the Ruby + Fastlane upgrade. Verify with the snippet in "Local builds" before claiming an LLM can build locally.
