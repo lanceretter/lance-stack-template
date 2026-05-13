@@ -726,6 +726,160 @@ Recommended order for adding a new dev:
 4. Verify: `cd apps/<app> && eas project:info` resolves to org
 5. Now do steps 1-3 above (Apple Developer team, Expo org, TestFlight group)
 
+---
+
+## New developer walkthrough — clone → simulator → your phone → TestFlight
+
+Linear path for an employee starting from zero. Each step lists what success looks like and the most likely failure with the fix.
+
+### Step 0 — Confirm your three invites
+
+Before touching code, the team owner needs to have invited you to:
+1. **Apple Developer team** (App Store Connect → Users and Access) — accept on appleid.apple.com
+2. **Expo organization** (expo.dev → org → members) — accept by email
+3. **TestFlight Internal Testing group** — wait until after your first build; the owner will add you
+
+If any are missing, ask before continuing — the rest of the walkthrough will fail in confusing ways.
+
+### Step 1 — Install machine prereqs (one-time)
+
+```bash
+# macOS: Xcode (App Store, ~10GB). Open it once to accept the license.
+xcode-select --install
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+xcodebuild -license accept
+
+# Node 20 LTS (any version manager works — nvm, fnm, asdf)
+nvm install 20 && nvm use 20
+node --version    # → v20.x
+
+# EAS CLI (one global install)
+npm install -g eas-cli
+eas --version     # → 18.x+
+```
+
+Run the verify snippet from "Local builds" to confirm Xcode + CocoaPods + Node are all good. You do NOT need Ruby 3.0+ or Fastlane yet — they're only required if you want to run `eas build --local` (the local-to-TestFlight path). For just running the app on your phone via Metro, system Ruby is fine.
+
+### Step 2 — Clone and install
+
+```bash
+git clone <repo-url> && cd <repo-name>
+cd apps/<app-name>      # e.g. apps/driver-app
+npm install             # ~3-5 min first time; standalone install per "Repo layout"
+```
+
+**Critical:** install from `apps/<app-name>/`, NOT from the repo root. Root-level `npm install` will pollute the workspace and cause "Invalid Hook Call" errors at runtime.
+
+Success: `node_modules/` exists in `apps/<app-name>/`, contains `expo`, `react-native`, and the in-app packages. No installer errors.
+
+Most likely failure: `npm install` errors on `react-native-worklets` peer-dep or `@maplibre/maplibre-react-native` mismatch. Fix: run `npx expo install --check` and accept the suggested versions, then `npm install` again.
+
+### Step 3 — Sign into EAS
+
+```bash
+eas login
+# Browser opens for OAuth, or paste credentials. Use the Expo account
+# the org owner added you to.
+
+eas whoami                # confirms your username
+eas project:info          # should show the project under the org slug
+```
+
+Success: `eas project:info` shows the project name and the org as the owner. If it errors with "no project linked", check that you're inside `apps/<app-name>/` (the `app.json` here has the project ID).
+
+Failure: "User is not authorized for this project" — ask the org owner to add you (Step 0).
+
+### Step 4 — Run on iOS Simulator (no signing needed)
+
+The fastest sanity check. The simulator doesn't require Apple Developer signing, so this works even before all your invites are accepted.
+
+```bash
+npx expo run:ios
+# First run: ~5-8 min (CocoaPods install + Xcode build). Subsequent runs ~30s.
+```
+
+What happens:
+1. `expo prebuild` generates the `ios/` directory (gitignored — regenerated each run)
+2. CocoaPods installs native dependencies
+3. Xcode builds the app
+4. iOS Simulator opens, app launches, Metro attaches for live JS
+5. You see the sign-in screen (or whatever the auth-gated root is)
+
+Success: app loads in Simulator, Metro logs show "Bundled X modules" with no red error overlay.
+
+Most likely failure: "Pods installation failed". Run `cd ios && pod repo update && cd ..` then retry. If `pod` isn't found, your Xcode toolchain Ruby is broken — reinstall Xcode CLT.
+
+### Step 5 — Run on your physical iPhone via USB
+
+This is the actual dev loop you'll use day-to-day. Native code runs on your phone; JS hot-reloads from Metro on your Mac.
+
+**Pair your phone first:**
+1. Connect iPhone → Mac via USB
+2. Unlock the phone, tap "Trust This Computer" when prompted
+3. Open Xcode → Window → Devices and Simulators → your phone should appear
+4. In Xcode → Settings → Accounts, add your Apple ID (the one the org owner invited)
+
+**Run the dev client on your phone:**
+
+```bash
+npx expo run:ios --device
+# Pick your iPhone from the list. First run installs the dev client +
+# attaches Metro. Subsequent runs of `expo start --dev-client` (without
+# the build step) reattach to the existing dev client.
+```
+
+Success: app installs on your iPhone, opens automatically, Metro attaches. You can edit a file in `src/` on your Mac and see the change live on your phone.
+
+Daily loop after the first `expo run:ios --device`:
+```bash
+npx expo start --dev-client    # just starts Metro; tap your app on the phone
+# Cmd+R in Metro terminal forces a JS reload on the phone
+# Press 'i' to launch the simulator alongside if you want both
+```
+
+Most likely failures:
+- "No iOS devices found" — see Footgun #16 above (Apple Dev team membership + Trust This Computer).
+- "Untrusted developer" alert on the phone — Settings → General → VPN & Device Management → trust your team's certificate.
+- "Could not connect to development server" — your iPhone and Mac must be on the SAME Wi-Fi network. Public/guest networks often block the Metro port.
+
+### Step 6 — Install a TestFlight build on your phone
+
+This is for testing PRODUCTION builds (signed, no Metro), or for getting the app to a non-developer's phone.
+
+**Prereq:** the team owner has built and submitted a `staging` profile build (`eas build --platform ios --profile staging && eas submit --latest`) and has added you to the TestFlight Internal Testing group.
+
+**On your phone:**
+1. Install the **TestFlight** app from the App Store (one-time, free)
+2. Check your email for "You're invited to test <App>" from Apple — tap the "View in TestFlight" link
+3. The TestFlight app opens, shows your team's app, tap "Install"
+4. The app installs (with a TestFlight orange dot beside it). Tap to launch.
+
+Success: production-style build runs on your phone with no Metro attachment, no dev menu shake, no hot reload. This is what real users get.
+
+Most likely failure: TestFlight shows "no builds available" even though the team owner says they shipped one. Fix: ask the owner — Footgun #13 (group/build linkage broken) is a known issue and has a specific fix on the OWNER's side (delete + recreate the Internal Testing group).
+
+### Step 7 — Daily loop
+
+After Step 5, your steady-state development loop is:
+
+```bash
+cd apps/<app-name>
+npx expo start --dev-client      # one terminal, leave running
+# Tap your installed dev-client app on iPhone
+# Edit code on Mac → save → JS reloads on phone live
+# Open dev menu with: shake phone, OR Cmd+D in Simulator, OR
+#   "Open dev menu" link in Metro terminal
+```
+
+Rebuild the native shell with `npx expo run:ios --device` only when:
+- You add a new native module (`expo-foo`, `react-native-bar`)
+- You change `app.json` plugins or `ios.infoPlist`
+- You upgrade the Expo SDK
+
+JS-only changes do NOT need a native rebuild. Hot reload through Metro covers them.
+
+---
+
 ## Phase 0 spike pattern (highly recommended)
 
 Before scoping a mobile build, spend 1-2 days verifying the external API surfaces your app needs. We learned this hard way: WorkWave's mutation API was assumed to exist; turns out it does, but with a specific event-typing convention (`podPicture` not `picture`) we'd have only learned during integration. Spending 30 minutes hitting the live API with `curl` would have saved 4 hours of debugging.
