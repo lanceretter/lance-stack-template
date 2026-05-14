@@ -27,32 +27,17 @@ Key routing rules:
 ## GBrain Search Guidance (configured by /sync-gbrain)
 <!-- gstack-gbrain-search-guidance:start -->
 
-GBrain is set up and synced on this machine. The agent should prefer gbrain
-over Grep when the question is semantic or when you don't know the exact
-identifier yet.
+GBrain is set up and synced on this machine. The local `.gbrain-source` pin
+records intended source `gstack-docs-lance-stack-template`, but some read
+commands can still return federated results. Prefer gbrain when the question is
+semantic or when you do not know the exact identifier yet:
 
-**This worktree is pinned to a worktree-scoped code source** via the
-`.gbrain-source` file in the repo root (kubectl-style context). Any
-`gbrain code-def`, `code-refs`, `code-callers`, `code-callees`, or `query`
-call from anywhere under this worktree routes to that source by default —
-no `--source` flag needed. Conductor sibling worktrees of the same repo
-each have their own pin and their own indexed pages, so semantic results
-match the actual code on disk in this worktree.
+- `gbrain search "<query>"`
+- `gbrain query "<question>"`
 
-Two indexed corpora available via the `gbrain` CLI:
-- This worktree's docs (auto-pinned via `.gbrain-source`).
-- `~/.gstack/` curated memory (registered as `gstack-brain-<user>` source via
-  the existing federation pipeline).
-
-Prefer gbrain when:
-- "Where is X handled?" / semantic intent, no exact string yet:
-    `gbrain search "<terms>"` or `gbrain query "<question>"`
-- "Where is symbol Y defined?" / symbol-based code questions:
-    `gbrain code-def <symbol>` or `gbrain code-refs <symbol>`
-- "What calls Y?" / "What does Y depend on?":
-    `gbrain code-callers <symbol>` / `gbrain code-callees <symbol>`
-- "What did we decide last time?" / past plans, retros, learnings:
-    `gbrain search "<terms>" --source gstack-brain-<user>`
+`gbrain code-def` and `gbrain code-refs` are useful for symbol lookup, but in
+the current CLI path they are global across indexed code pages. Verify returned
+file paths before treating them as repo-local.
 
 For fast-moving provider APIs (AI voice/realtime, payments, auth, cloud
 runtime knobs), do not rely on memory or old examples alone. Use gbrain to find
@@ -61,9 +46,8 @@ before changing behavior. When a provider-specific lesson is learned, update
 the local docs and run `/sync-gbrain` so future agents retrieve the corrected
 guidance instead of repeating stale assumptions.
 
-Grep is still right for known exact strings, regex, multiline patterns, and
-file globs. Run `/sync-gbrain` after meaningful doc changes; for ongoing
-auto-sync across all worktrees, run `gbrain autopilot --install` once per
-machine — gbrain's daemon handles incremental refresh on a schedule.
+Use `rg` for known exact strings, regex, multiline patterns, and file globs.
+Run `/sync-gbrain` after meaningful doc changes; for ongoing auto-sync across
+all worktrees, run `gbrain autopilot --install` once per machine.
 
 <!-- gstack-gbrain-search-guidance:end -->
