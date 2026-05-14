@@ -54,6 +54,13 @@ Prefer gbrain when:
 - "What did we decide last time?" / past plans, retros, learnings:
     `gbrain search "<terms>" --source gstack-brain-<user>`
 
+For fast-moving provider APIs (AI voice/realtime, payments, auth, cloud
+runtime knobs), do not rely on memory or old examples alone. Use gbrain to find
+the repo's local decision docs, then verify current official provider docs
+before changing behavior. When a provider-specific lesson is learned, update
+the local docs and run `/sync-gbrain` so future agents retrieve the corrected
+guidance instead of repeating stale assumptions.
+
 Grep is still right for known exact strings, regex, multiline patterns, and
 file globs. Run `/sync-gbrain` after meaningful doc changes; for ongoing
 auto-sync across all worktrees, run `gbrain autopilot --install` once per
