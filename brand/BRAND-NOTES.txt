@@ -1,0 +1,25 @@
+CONQUEST SOLUTIONS — LOGO PACKAGE (2026-07-21)
+Source: Bob Wilson's original vector file "CS logo 0707 187 red.pdf" (2007, CorelDRAW).
+All files here are TRUE VECTOR (SVG) or renders from it — no tracing, no grain.
+
+COLORS (vendor-standard, matches 18 years of produced collateral):
+  Red:   #CC0001   (RGB 204, 0, 1)
+  Black: #000000
+  Note: the 2007 source file specified Pantone 187 (#BF2F37); every file ever
+  sent to vendors used #CC0001, so #CC0001 is the working standard (owner
+  decision 2026-07-21). For NEW print jobs where Pantone matching is offered,
+  PMS 186 C is the closest match to #CC0001.
+
+FILES per lockup (horizontal / stacked / mark = CS only):
+  *-color.svg            full color on transparent (primary)
+  *-white-knockout.svg   red S + white C/wordmark, for dark backgrounds
+  *-all-black.svg        one-color black (fax/engraving/single-color print)
+  *-all-white.svg        one-color white (dark single-color uses)
+  *-2000w.png / -600w.png  transparent raster renders of each
+
+PRINT MASTER: use "CS logo 0707 187 red.pdf" (same folder, one level up in
+docs/brand/) when a vendor asks for vector/EPS — every modern print shop
+accepts PDF.
+
+WORDMARK FONT: Bank Gothic — CONQUEST in Medium/Bold, SOLUTIONS in
+Light/Medium (per the original design rationale, archived alongside).

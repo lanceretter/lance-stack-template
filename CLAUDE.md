@@ -6,6 +6,15 @@ how to set up a new Mac (`NEW-MACHINE-SETUP.md`), the full stack architecture
 (`BETTER-AUTH.md`), and the AI chat surface (`AI-CHAT.md`). It is a docs
 repo — no source code lives here.
 
+## Brand / logo assets
+
+Canonical Conquest Solutions logo kit lives in **[`brand/`](./brand/)** —
+true-vector SVGs + PNG renders + the print-master PDF, in every lockup
+(horizontal / stacked / mark) and variant (color / white-knockout / all-black /
+all-white). For ANY Conquest Solutions logo request, use these; do not pull
+stale copies from old decks. See [`brand/README.md`](./brand/README.md) for the
+index, color standard (`#CC0001`), and quick picks.
+
 ## Skill routing
 
 When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
